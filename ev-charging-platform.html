@@ -1230,63 +1230,8 @@
         <span class="card-title">Station Status</span>
         <span class="card-status"><span class="status-dot"></span>6 Active</span>
       </div>
-      <div class="stations-grid">
-        <div class="stations-grid" id="stations-container"></div>
-        <div class="station-row">
-          <div class="station-icon active">⚡</div>
-          <div class="station-info">
-            <div class="station-name">Downtown Hub A</div>
-            <div class="station-loc">Ports: 12/12 active</div>
-          </div>
-          <div class="station-bar-wrap">
-            <div class="station-bar-label"><span>Load</span><span>94%</span></div>
-            <div class="station-bar"><div class="station-bar-fill fill-amber" style="width:94%"></div></div>
-          </div>
-        </div>
-        <div class="station-row">
-          <div class="station-icon active">⚡</div>
-          <div class="station-info">
-            <div class="station-name">Westside Mall</div>
-            <div class="station-loc">Ports: 8/20 active</div>
-          </div>
-          <div class="station-bar-wrap">
-            <div class="station-bar-label"><span>Load</span><span>42%</span></div>
-            <div class="station-bar"><div class="station-bar-fill fill-green" style="width:42%"></div></div>
-          </div>
-        </div>
-        <div class="station-row">
-          <div class="station-icon busy">⚡</div>
-          <div class="station-info">
-            <div class="station-name">Airport Terminal</div>
-            <div class="station-loc">Ports: 30/30 active</div>
-          </div>
-          <div class="station-bar-wrap">
-            <div class="station-bar-label"><span>Load</span><span>100%</span></div>
-            <div class="station-bar"><div class="station-bar-fill fill-red" style="width:100%"></div></div>
-          </div>
-        </div>
-        <div class="station-row">
-          <div class="station-icon active">⚡</div>
-          <div class="station-info">
-            <div class="station-name">North District</div>
-            <div class="station-loc">Ports: 5/16 active</div>
-          </div>
-          <div class="station-bar-wrap">
-            <div class="station-bar-label"><span>Load</span><span>31%</span></div>
-            <div class="station-bar"><div class="station-bar-fill fill-green" style="width:31%"></div></div>
-          </div>
-        </div>
-        <div class="station-row">
-          <div class="station-icon offline">⚡</div>
-          <div class="station-info">
-            <div class="station-name">East Highway Stop</div>
-            <div class="station-loc">Maintenance Mode</div>
-          </div>
-          <div class="station-bar-wrap">
-            <div class="station-bar-label"><span>Load</span><span>0%</span></div>
-            <div class="station-bar"><div class="station-bar-fill fill-red" style="width:0%"></div></div>
-          </div>
-        </div>
+      <div class="stations-grid" id="stations-container">
+        <!-- Populated dynamically from Supabase -->
       </div>
     </div>
 
@@ -1308,6 +1253,8 @@
         <span class="card-status" style="color:var(--amber)">◆ Next peak: 18:30</span>
       </div>
       <div class="chart-container">
+       
+
         <canvas id="loadForecastChart"></canvas>
       </div>
     </div>
@@ -1667,35 +1614,35 @@ const demandChart = new Chart(demandCtx, {
 
 // Live update demand
 // 1. Function to fetch history from Supabase
+// Live update demand chart from demand_history table
 async function updateDemandChart() {
-  const { data, error } = await _supabase
-    .from('demand_history')
-    .select('created_at, kw_value')
-    .order('created_at', { ascending: false })
-    .limit(30); // Get the last 30 data points
+    try {
+        const { data, error } = await _supabase
+            .from('demand_history')
+            .select('*')
+            .order('created_at', { ascending: true })
+            .limit(30);
 
-  if (data) {
-    // Reverse them so they go left-to-right (oldest to newest)
-    const sortedData = data.reverse();
-    
-    // Update Chart Labels (Time) and Data (kW)
-    demandChart.data.labels = sortedData.map(row => {
-      const d = new Date(row.created_at);
-      return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
-    });
-    demandChart.data.datasets[0].data = sortedData.map(row => row.kw_value);
-    
-    demandChart.update('none');
-  }
-  // Update the ticker with the latest value
-const latestKW = sortedData[sortedData.length - 1].kw_value;
-document.querySelector('.ticker-item span').textContent = `↑ ${(latestKW / 100).toFixed(1)} MW`;
+        if (error || !data || data.length === 0) return;
+
+        const newLabels = data.map(row => {
+            const d = new Date(row.created_at);
+            return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+        });
+        const newValues = data.map(row => row.kw_value);
+
+        demandChart.data.labels = newLabels;
+        demandChart.data.datasets[0].data = newValues;
+        demandChart.update();
+    } catch (error) {
+        console.error("Error updating demand chart:", error);
+    }
 }
 
-// 2. Initial load
+// Initial load
 updateDemandChart();
 
-// 3. Real-time listener: Whenever a new row is added to demand_history, update the chart
+// Real-time listener for new demand_history rows
 _supabase
   .channel('demand-updates')
   .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'demand_history' }, () => {
@@ -1730,20 +1677,24 @@ new Chart(emCtx, {
 });
 
 // ── LOAD FORECAST CHART ──
+// ── LOAD FORECAST CHART ──
 async function loadForecastChart() {
   const { data, error } = await _supabase
     .from('forecast_data')
     .select('*')
     .order('id', { ascending: true });
 
-  if (error || !data) {
-    console.error("Error fetching forecast:", error);
+  if (error || !data || data.length === 0) {
+    console.error("Error fetching forecast or no data:", error);
     return;
   }
 
-  const ctx = document.getElementById('forecastChart').getContext('2d');
-  
-  // This creates the chart using YOUR Supabase data
+  const forecastCanvas = document.getElementById('loadForecastChart');
+  if (!forecastCanvas) { console.error('loadForecastChart canvas not found'); return; }
+  const existingChart = Chart.getChart(forecastCanvas);
+  if (existingChart) existingChart.destroy();
+  const ctx = forecastCanvas.getContext('2d');
+
   new Chart(ctx, {
     type: 'line',
     data: {
@@ -1794,48 +1745,6 @@ async function loadForecastChart() {
 
 // Call the function so it runs when the page loads
 loadForecastChart();
-const actualCut = actual.map((v,i) => i >= 15 ? null : v);
-
-new Chart(lfCtx, {
-  type: 'line',
-  data: {
-    labels: hours,
-    datasets: [
-      {
-        label: 'Actual',
-        data: actualCut,
-        borderColor: '#00e5ff',
-        backgroundColor: 'rgba(0,229,255,0.05)',
-        fill: true,
-        tension: 0.4,
-        borderWidth: 2,
-        pointRadius: 0,
-      },
-      {
-        label: 'Forecast',
-        data: forecastFuture,
-        borderColor: '#ffab00',
-        backgroundColor: 'rgba(255,171,0,0.05)',
-        fill: true,
-        tension: 0.4,
-        borderWidth: 2,
-        borderDash: [4,4],
-        pointRadius: 0,
-      }
-    ]
-  },
-  options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { position: 'top', labels: { boxWidth: 12 } }
-    },
-    scales: {
-      x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { maxTicksLimit: 8 } },
-      y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { callback: v => (v/1000).toFixed(1) + ' MW' } }
-    }
-  }
-});
 
 // ── FORECAST MAIN CHART ──
 const fmCtx = document.getElementById('forecastMain').getContext('2d');
@@ -1975,8 +1884,10 @@ function animateCounter(el, target, decimals = 0) {
 setInterval(() => {
   const sessEl = document.getElementById('sessions');
   const energyEl = document.getElementById('energy');
+  const accuracyEl = document.getElementById('accuracy');
   if (sessEl) animateCounter(sessEl, 2800 + Math.floor(Math.random()*200));
   if (energyEl) animateCounter(energyEl, 140 + Math.floor(Math.random()*20));
+  if (accuracyEl) animateCounter(accuracyEl, 97.8 + Math.random()*0.6, 1);
 }, 5000);
 
 // Station bar micro-updates
