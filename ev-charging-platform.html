@@ -1710,29 +1710,69 @@ setInterval(() => {
 let map;
 
 async function initMap() {
-  // 1. Set a fallback location (Pimpalner coordinates) in case geolocation fails/is denied
-  const defaultLat = 20.89; 
-  const defaultLng = 74.05; 
-  
-  // Initialize the map with the default view first
-  map = L.map('map').setView([defaultLat, defaultLng], 12);
+  // 1. Initialize the map (view will be set dynamically)
+  map = L.map('map');
 
-  // 2. Add the dark mode tile layer
+  // 2. Add the VoltIQ Dark Mode tile layer
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; OpenStreetMap'
   }).addTo(map);
 
-  // 3. Request Browser Geolocation
+  // 3. Fetch stations from Supabase
+  const { data: stations, error } = await _supabase.from('charging_stations').select('*');
+  
+  if (error) {
+    console.error("Error fetching map stations:", error);
+    return;
+  }
+
+  // Create a group to hold all station markers
+  const stationMarkers = L.featureGroup().addTo(map);
+
+  stations.forEach(station => {
+    // Only plot if the station has coordinates in the database
+    if (station.lat && station.lng) {
+      let statusColor = '#76ff03'; // Green for active
+      if (station.status === 'busy') statusColor = '#ffab00'; // Amber
+      if (station.status === 'offline') statusColor = '#ff1744'; // Red
+
+      const marker = L.marker([station.lat, station.lng]);
+      
+      // Cyberpunk-themed popup
+      marker.bindPopup(`
+        <div style="font-family: 'Inter', sans-serif; color: #040b14; min-width: 140px;">
+          <strong style="font-family: 'Rajdhani', sans-serif; font-size: 16px; text-transform: uppercase;">${station.name}</strong><br>
+          <div style="font-family: 'Space Mono', monospace; font-size: 11px; color: #607d8b; margin-top: 4px;">
+            STATUS: <span style="color: ${statusColor}; font-weight: bold;">${station.status.toUpperCase()}</span><br>
+            LOAD: ${station.power_load}%
+          </div>
+        </div>
+      `);
+      
+      stationMarkers.addLayer(marker);
+    }
+  });
+
+  // 4. Center the map automatically to fit all database stations
+  if (stationMarkers.getLayers().length > 0) {
+    // Padding ensures markers aren't pushed right against the edge of the map container
+    map.fitBounds(stationMarkers.getBounds(), { padding: [50, 50] });
+  } else {
+    // Absolute fallback if the database is empty (centers on a world view)
+    map.setView([20, 0], 2); 
+  }
+
+  // 5. Request Browser Geolocation (No default location if denied!)
   if ("geolocation" in navigator) {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const userLat = position.coords.latitude;
         const userLng = position.coords.longitude;
 
-        // Fly smoothly to the user's actual location
-        map.flyTo([userLat, userLng], 13, { duration: 1.5 });
+        // User allowed! Fly smoothly from the network view to their actual location
+        map.flyTo([userLat, userLng], 12, { duration: 2.0 });
 
-        // Add a glowing "You Are Here" marker to match the VoltIQ aesthetic
+        // Add a custom glowing cyan marker for the user
         const userIcon = L.divIcon({
           className: 'user-icon',
           html: `<div style="background: #00e5ff; width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 15px #00e5ff, 0 0 30px #00e5ff; border: 2px solid #fff;"></div>`,
@@ -1744,42 +1784,11 @@ async function initMap() {
           .bindPopup('<b style="font-family: \'Rajdhani\', sans-serif; text-transform: uppercase;">Command Center</b><br>Current Location');
       },
       (error) => {
-        console.warn("Geolocation permission denied or failed. Defaulting to fallback.", error);
+        // User denied location access. The map simply remains framed on the stations.
+        console.log("Geolocation denied or unavailable. Maintaining network view.");
       }
     );
-  } else {
-    console.warn("Geolocation is not supported by this browser.");
   }
-
-  // 4. Fetch and plot stations from Supabase
-  const { data: stations, error } = await _supabase.from('charging_stations').select('*');
-  
-  if (error) {
-    console.error("Error fetching map stations:", error);
-    return;
-  }
-
-  stations.forEach(station => {
-    if (station.lat && station.lng) {
-      // Determine color based on status
-      let statusColor = '#76ff03'; // volt (active)
-      if (station.status === 'busy') statusColor = '#ffab00'; // amber
-      if (station.status === 'offline') statusColor = '#ff1744'; // red
-
-      const marker = L.marker([station.lat, station.lng]).addTo(map);
-      
-      // Themed popup content
-      marker.bindPopup(`
-        <div style="font-family: 'Inter', sans-serif; color: #040b14; min-width: 120px;">
-          <strong style="font-family: 'Rajdhani', sans-serif; font-size: 16px; text-transform: uppercase;">${station.name}</strong><br>
-          <span style="font-family: 'Space Mono', monospace; font-size: 11px; color: #607d8b;">
-            STATUS: <span style="color: ${statusColor}; font-weight: bold;">${station.status.toUpperCase()}</span><br>
-            LOAD: ${station.power_load}%
-          </span>
-        </div>
-      `);
-    }
-  });
 }
 
 // Initialize the map
