@@ -1730,11 +1730,70 @@ new Chart(emCtx, {
 });
 
 // ── LOAD FORECAST CHART ──
-const lfCtx = document.getElementById('loadForecastChart').getContext('2d');
-const hours = Array.from({length:24}, (_,i) => i.toString().padStart(2,'0') + ':00');
-const actual = [820,740,690,650,640,660,780,1100,1450,1600,1580,1540,1600,1580,1520,1600,1800,2100,2200,2050,1800,1500,1200,950];
-const forecast = [850,760,700,660,650,680,800,1120,1430,1580,1600,1560,1580,1600,1540,1620,1850,2150,2180,2030,1780,1480,1180,930];
-const forecastFuture = forecast.map((v,i) => i >= 15 ? v : null);
+async function loadForecastChart() {
+  const { data, error } = await _supabase
+    .from('forecast_data')
+    .select('*')
+    .order('id', { ascending: true });
+
+  if (error || !data) {
+    console.error("Error fetching forecast:", error);
+    return;
+  }
+
+  const ctx = document.getElementById('forecastChart').getContext('2d');
+  
+  // This creates the chart using YOUR Supabase data
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: data.map(row => row.label),
+      datasets: [
+        {
+          label: 'Actual Load',
+          data: data.map(row => row.actual),
+          borderColor: '#00e5ff',
+          backgroundColor: 'rgba(0,229,255,0.1)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 2
+        },
+        {
+          label: 'AI Prediction',
+          data: data.map(row => row.predicted),
+          borderColor: '#76ff03',
+          borderDash: [5, 5],
+          fill: false,
+          tension: 0.4,
+          pointRadius: 2
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          labels: { color: '#e0f7fa', font: { size: 10 } }
+        }
+      },
+      scales: {
+        y: { 
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: { color: '#607d8b' }
+        },
+        x: { 
+          grid: { display: false },
+          ticks: { color: '#607d8b' }
+        }
+      }
+    }
+  });
+}
+
+// Call the function so it runs when the page loads
+loadForecastChart();
 const actualCut = actual.map((v,i) => i >= 15 ? null : v);
 
 new Chart(lfCtx, {
