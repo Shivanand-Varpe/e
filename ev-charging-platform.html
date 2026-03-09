@@ -1,6 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="voltiq-icon-32x32.png">
+<link rel="icon" type="image/png" sizes="96x96" href="voltiq-icon-96x96.png">
+<link rel="apple-touch-icon" sizes="180x180" href="voltiq-icon-180x180.png">
+<link rel="manifest" href="manifest.json">
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1368,9 +1375,15 @@
 <section class="heatmap-section" id="heatmap">
   <div class="section-label">Demand Analytics</div>
   <h2>Usage <em>Heatmap</em> — Weekly</h2>
-  <p class="section-desc">Hourly charging demand patterns across your network. Identify consistently high-demand windows to guide infrastructure expansion.</p>
+  <p class="section-desc">Hourly charging demand patterns across your network.</p>
 
-  <div id="heatmap-container" class="fade-in"></div>
+  <div id="heatmap-container" style="overflow-x: auto; margin-bottom: 80px;"></div>
+
+  <div class="section-label">Live Network</div>
+  <h2>Station <em>Locations</em></h2>
+  <p class="section-desc">Real-time geospatial view of active charging nodes.</p>
+  
+  <div id="map" style="height: 400px; border-radius: 12px; border: 1px solid var(--border);"></div>
 </section>
 
 <!-- PRICING -->
@@ -1620,20 +1633,24 @@ async function updateDemandChart() {
         const { data, error } = await _supabase
             .from('demand_history')
             .select('*')
-            .order('created_at', { ascending: true })
+            .order('created_at', { ascending: false }) // Changed to false to get newest
             .limit(30);
 
         if (error || !data || data.length === 0) return;
 
-        const newLabels = data.map(row => {
+        // Reverse to show left-to-right
+        const sortedData = data.reverse();
+
+        const newLabels = sortedData.map(row => {
             const d = new Date(row.created_at);
             return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
         });
-        const newValues = data.map(row => row.kw_value);
+        const newValues = sortedData.map(row => row.kw_value);
 
         demandChart.data.labels = newLabels;
         demandChart.data.datasets[0].data = newValues;
-        demandChart.update();
+        demandChart.update('none'); // 'none' prevents annoying flashing animations
+
     } catch (error) {
         console.error("Error updating demand chart:", error);
     }
@@ -1899,6 +1916,31 @@ setInterval(() => {
     bar.style.width = newWidth + '%';
   });
 }, 3000);
+let map;
+
+async function initMap() {
+  // 1. Initialize the map centered on your stations
+  map = L.map('map').setView([51.505, -0.09], 13);
+
+  // 2. Add a "Dark Mode" map style to match your VoltIQ theme
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
+
+  // 3. Get stations from Supabase
+  const { data: stations } = await _supabase.from('charging_stations').select('*');
+
+  // 4. Add markers for each station
+  stations.forEach(station => {
+    if (station.lat && station.lng) {
+      const marker = L.marker([station.lat, station.lng]).addTo(map);
+      marker.bindPopup(`<b>${station.name}</b><br>Status: ${station.status}`);
+    }
+  });
+}
+
+// Call it
+initMap();
 </script>
 </body>
 </html>

@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#071220"/>
+      <stop offset="100%" stop-color="#040b14"/>
+    </radialGradient>
+    <radialGradient id="boltGlow" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#00e5ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="boltGrad" x1="30%" y1="0%" x2="70%" y2="100%">
+      <stop offset="0%" stop-color="#76ff03"/>
+      <stop offset="50%" stop-color="#00e5ff"/>
+      <stop offset="100%" stop-color="#0099cc"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <clipPath id="roundedSquare">
+      <rect x="0" y="0" width="512" height="512" rx="112" ry="112"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="512" height="512" rx="112" ry="112" fill="url(#bgGlow)"/>
+
+  <!-- Subtle grid lines -->
+  <g opacity="0.07" stroke="#00e5ff" stroke-width="1" clip-path="url(#roundedSquare)">
+    <line x1="0" y1="128" x2="512" y2="128"/>
+    <line x1="0" y1="256" x2="512" y2="256"/>
+    <line x1="0" y1="384" x2="512" y2="384"/>
+    <line x1="128" y1="0" x2="128" y2="512"/>
+    <line x1="256" y1="0" x2="256" y2="512"/>
+    <line x1="384" y1="0" x2="384" y2="512"/>
+  </g>
+
+  <!-- Glow halo behind bolt -->
+  <ellipse cx="256" cy="240" rx="140" ry="160" fill="url(#boltGlow)"/>
+
+  <!-- Outer ring -->
+  <circle cx="256" cy="256" r="185" fill="none" stroke="#00e5ff" stroke-width="2" opacity="0.2"/>
+  <circle cx="256" cy="256" r="185" fill="none" stroke="#00e5ff" stroke-width="1" opacity="0.1" stroke-dasharray="12 8"/>
+
+  <!-- Lightning bolt - main shape -->
+  <path d="M 290 80 L 195 265 L 255 265 L 220 432 L 325 225 L 262 225 Z"
+        fill="url(#boltGrad)"
+        filter="url(#glow)"
+        opacity="0.95"/>
+
+  <!-- Lightning bolt - inner highlight -->
+  <path d="M 280 105 L 210 258 L 252 258 L 228 385 L 308 242 L 263 242 Z"
+        fill="white"
+        opacity="0.12"/>
+
+  <!-- Top accent dot -->
+  <circle cx="256" cy="256" r="185" fill="none" stroke="#76ff03" stroke-width="2.5"
+          stroke-dasharray="4 381" stroke-dashoffset="-88" opacity="0.7"/>
+
+  <!-- Corner accent marks -->
+  <line x1="96" y1="96" x2="116" y2="96" stroke="#00e5ff" stroke-width="2" opacity="0.4"/>
+  <line x1="96" y1="96" x2="96" y2="116" stroke="#00e5ff" stroke-width="2" opacity="0.4"/>
+  <line x1="416" y1="96" x2="396" y2="96" stroke="#00e5ff" stroke-width="2" opacity="0.4"/>
+  <line x1="416" y1="96" x2="416" y2="116" stroke="#00e5ff" stroke-width="2" opacity="0.4"/>
+  <line x1="96" y1="416" x2="116" y2="416" stroke="#00e5ff" stroke-width="2" opacity="0.4"/>
+  <line x1="96" y1="416" x2="96" y2="396" stroke="#00e5ff" stroke-width="2" opacity="0.4"/>
+  <line x1="416" y1="416" x2="396" y2="416" stroke="#00e5ff" stroke-width="2" opacity="0.4"/>
+  <line x1="416" y1="416" x2="416" y2="396" stroke="#00e5ff" stroke-width="2" opacity="0.4"/>
+</svg>
