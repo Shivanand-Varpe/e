@@ -1,0 +1,1934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoltIQ — EV Charging Demand Forecast & Optimization</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #040b14;
+    --bg2: #071220;
+    --bg3: #0a1929;
+    --electric: #00e5ff;
+    --volt: #76ff03;
+    --amber: #ffab00;
+    --red: #ff1744;
+    --surface: rgba(0,229,255,0.04);
+    --border: rgba(0,229,255,0.12);
+    --text: #e0f7fa;
+    --muted: #607d8b;
+    --glow: 0 0 30px rgba(0,229,255,0.25);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-weight: 300;
+    overflow-x: hidden;
+  }
+
+  /* ── NOISE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.4;
+  }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--electric); border-radius: 2px; }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 900;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 48px;
+    height: 68px;
+    background: rgba(4,11,20,0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    color: #fff;
+    text-decoration: none;
+  }
+
+  .nav-logo .bolt {
+    width: 32px; height: 32px;
+    background: var(--electric);
+    clip-path: polygon(60% 0%, 40% 45%, 70% 45%, 30% 100%, 55% 55%, 25% 55%);
+    filter: drop-shadow(0 0 8px var(--electric));
+    animation: pulse-bolt 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-bolt {
+    0%, 100% { filter: drop-shadow(0 0 8px var(--electric)); }
+    50% { filter: drop-shadow(0 0 16px var(--electric)) drop-shadow(0 0 32px var(--electric)); }
+  }
+
+  .nav-logo span { color: var(--electric); }
+
+  .nav-links {
+    display: flex;
+    gap: 36px;
+    list-style: none;
+  }
+
+  .nav-links a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: color 0.2s;
+    font-weight: 500;
+  }
+
+  .nav-links a:hover { color: var(--electric); }
+
+  .nav-cta {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .btn-ghost {
+    padding: 8px 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: all 0.2s;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .btn-ghost:hover {
+    border-color: var(--electric);
+    color: var(--electric);
+  }
+
+  .btn-primary {
+    padding: 8px 24px;
+    background: var(--electric);
+    border: none;
+    color: #000;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: all 0.2s;
+    font-family: 'Rajdhani', sans-serif;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-primary::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: #fff;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .btn-primary:hover::after { opacity: 0.15; }
+  .btn-primary:hover { box-shadow: 0 0 20px rgba(0,229,255,0.5); }
+
+  /* ── HERO ── */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    padding: 120px 48px 60px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.04) 1px, transparent 1px);
+    background-size: 60px 60px;
+    animation: grid-shift 20s linear infinite;
+  }
+
+  @keyframes grid-shift {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(60px); }
+  }
+
+  .hero-glow-1 {
+    position: absolute;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(0,229,255,0.08) 0%, transparent 70%);
+    top: -100px; right: -100px;
+    pointer-events: none;
+  }
+
+  .hero-glow-2 {
+    position: absolute;
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(118,255,3,0.06) 0%, transparent 70%);
+    bottom: 0; left: 200px;
+    pointer-events: none;
+  }
+
+  .hero-content {
+    position: relative;
+    z-index: 2;
+    max-width: 680px;
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    border: 1px solid rgba(118,255,3,0.3);
+    background: rgba(118,255,3,0.06);
+    color: var(--volt);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 28px;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .hero-badge::before {
+    content: '';
+    width: 6px; height: 6px;
+    background: var(--volt);
+    border-radius: 50%;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+  }
+
+  h1 {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: clamp(52px, 6vw, 86px);
+    font-weight: 700;
+    line-height: 0.95;
+    letter-spacing: -0.02em;
+    margin-bottom: 24px;
+    text-transform: uppercase;
+  }
+
+  h1 .line2 {
+    display: block;
+    color: var(--electric);
+    text-shadow: 0 0 40px rgba(0,229,255,0.4);
+  }
+
+  .hero-sub {
+    font-size: 16px;
+    color: var(--muted);
+    line-height: 1.7;
+    max-width: 500px;
+    margin-bottom: 40px;
+  }
+
+  .hero-actions {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .btn-large {
+    padding: 14px 36px;
+    font-size: 14px;
+  }
+
+  .hero-stats {
+    position: absolute;
+    right: 48px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 20px 28px;
+    min-width: 200px;
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+    transition: border-color 0.3s;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--electric), transparent);
+    animation: shimmer 3s ease-in-out infinite;
+  }
+
+  .stat-card:nth-child(2)::before { background: linear-gradient(90deg, transparent, var(--volt), transparent); animation-delay: 1s; }
+  .stat-card:nth-child(3)::before { background: linear-gradient(90deg, transparent, var(--amber), transparent); animation-delay: 2s; }
+
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  .stat-label {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .stat-value {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 42px;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+  }
+
+  .stat-value .unit {
+    font-size: 20px;
+    color: var(--electric);
+  }
+
+  .stat-delta {
+    font-size: 12px;
+    color: var(--volt);
+    margin-top: 6px;
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* ── SECTION COMMON ── */
+  section {
+    padding: 100px 48px;
+    position: relative;
+  }
+
+  .section-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--electric);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .section-label::before {
+    content: '';
+    width: 32px;
+    height: 1px;
+    background: var(--electric);
+  }
+
+  h2 {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: clamp(36px, 4vw, 56px);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+    line-height: 1;
+    margin-bottom: 16px;
+  }
+
+  h2 em {
+    color: var(--electric);
+    font-style: normal;
+  }
+
+  .section-desc {
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.7;
+    max-width: 560px;
+    margin-bottom: 60px;
+  }
+
+  /* ── DASHBOARD SECTION ── */
+  .dashboard-section {
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 16px;
+    margin-top: 16px;
+  }
+
+  .dash-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+
+  .dash-card:hover {
+    border-color: rgba(0,229,255,0.3);
+    box-shadow: var(--glow);
+  }
+
+  .dash-card.wide { grid-column: span 2; }
+  .dash-card.full { grid-column: span 3; }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .card-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .card-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--volt);
+    font-family: 'Space Mono', monospace;
+  }
+
+  .status-dot {
+    width: 6px; height: 6px;
+    background: var(--volt);
+    border-radius: 50%;
+    animation: blink 1.5s ease-in-out infinite;
+  }
+
+  /* ── CHARGING STATIONS ── */
+  .stations-grid {
+    display: grid;
+    gap: 8px;
+  }
+
+  .station-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+
+  .station-row:hover {
+    border-color: var(--border);
+    background: rgba(0,229,255,0.03);
+  }
+
+  .station-icon {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+
+  .station-icon.active { background: rgba(118,255,3,0.15); color: var(--volt); }
+  .station-icon.busy { background: rgba(255,171,0,0.15); color: var(--amber); }
+  .station-icon.offline { background: rgba(255,23,68,0.15); color: var(--red); }
+
+  .station-info { flex: 1; }
+  .station-name { font-size: 14px; font-weight: 500; margin-bottom: 2px; }
+  .station-loc { font-size: 11px; color: var(--muted); font-family: 'Space Mono', monospace; }
+
+  .station-bar-wrap {
+    width: 100px;
+  }
+
+  .station-bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    margin-bottom: 4px;
+  }
+
+  .station-bar {
+    height: 4px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .station-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 1s ease;
+  }
+
+  .fill-green { background: var(--volt); box-shadow: 0 0 8px rgba(118,255,3,0.5); }
+  .fill-amber { background: var(--amber); box-shadow: 0 0 8px rgba(255,171,0,0.5); }
+  .fill-red { background: var(--red); }
+
+  /* ── DEMAND CHART ── */
+  .chart-container {
+    position: relative;
+    height: 200px;
+  }
+
+  /* ── METRICS ROW ── */
+  .metrics-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 60px;
+  }
+
+  .metric-box {
+    border: 1px solid var(--border);
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+    background: var(--surface);
+  }
+
+  .metric-box::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .metric-box:nth-child(1)::after { background: var(--electric); }
+  .metric-box:nth-child(2)::after { background: var(--volt); }
+  .metric-box:nth-child(3)::after { background: var(--amber); }
+  .metric-box:nth-child(4)::after { background: #7c4dff; }
+
+  .metric-num {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 48px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+
+  .metric-label {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+  }
+
+  .metric-trend {
+    position: absolute;
+    top: 24px; right: 24px;
+    font-size: 11px;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .trend-up { color: var(--volt); }
+  .trend-down { color: var(--red); }
+
+  /* ── FEATURES ── */
+  .features-section {
+    background: var(--bg);
+  }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    border: 1px solid var(--border);
+    margin-top: 60px;
+    background: var(--border);
+  }
+
+  .feature-card {
+    background: var(--bg2);
+    padding: 40px 32px;
+    position: relative;
+    overflow: hidden;
+    transition: background 0.3s;
+  }
+
+  .feature-card:hover { background: var(--bg3); }
+
+  .feature-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 2px;
+    height: 0;
+    background: var(--electric);
+    transition: height 0.4s ease;
+  }
+
+  .feature-card:hover::before { height: 100%; }
+
+  .feature-icon {
+    font-size: 28px;
+    margin-bottom: 20px;
+    display: block;
+  }
+
+  .feature-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    margin-bottom: 12px;
+    color: #fff;
+  }
+
+  .feature-desc {
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  .feature-tag {
+    display: inline-block;
+    margin-top: 20px;
+    padding: 4px 12px;
+    border: 1px solid rgba(0,229,255,0.2);
+    color: var(--electric);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* ── FORECAST SECTION ── */
+  .forecast-section {
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+  }
+
+  .forecast-layout {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 40px;
+    align-items: start;
+  }
+
+  .forecast-controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+
+  .time-btn {
+    padding: 6px 16px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-size: 11px;
+    cursor: pointer;
+    font-family: 'Space Mono', monospace;
+    letter-spacing: 0.08em;
+    transition: all 0.2s;
+  }
+
+  .time-btn.active {
+    border-color: var(--electric);
+    color: var(--electric);
+    background: rgba(0,229,255,0.06);
+  }
+
+  .forecast-chart-wrap {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 24px;
+    position: relative;
+  }
+
+  .forecast-chart-wrap canvas { height: 300px !important; }
+
+  .insights-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .insight-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 20px;
+    position: relative;
+  }
+
+  .insight-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .insight-icon {
+    width: 32px; height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+
+  .insight-title {
+    font-size: 13px;
+    font-weight: 600;
+    font-family: 'Rajdhani', sans-serif;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .insight-body {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .insight-value {
+    font-family: 'Space Mono', monospace;
+    font-size: 24px;
+    font-weight: 700;
+    margin-top: 8px;
+  }
+
+  .val-electric { color: var(--electric); }
+  .val-volt { color: var(--volt); }
+  .val-amber { color: var(--amber); }
+
+  /* ── MAP SECTION ── */
+  .map-section { background: var(--bg); }
+
+  .map-container {
+    position: relative;
+    height: 480px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    margin-top: 16px;
+  }
+
+  .map-svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .map-overlay {
+    position: absolute;
+    top: 20px; left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .map-legend {
+    background: rgba(4,11,20,0.85);
+    border: 1px solid var(--border);
+    padding: 16px 20px;
+    backdrop-filter: blur(10px);
+  }
+
+  .legend-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+  }
+
+  /* ── HEATMAP ── */
+  .heatmap-section { background: var(--bg2); border-top: 1px solid var(--border); }
+
+  .heatmap-grid {
+    display: grid;
+    grid-template-columns: 80px repeat(24, 1fr);
+    gap: 3px;
+    margin-top: 24px;
+  }
+
+  .heat-label {
+    font-size: 10px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 8px;
+  }
+
+  .heat-col-label {
+    font-size: 9px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    text-align: center;
+    padding-bottom: 4px;
+  }
+
+  .heat-cell {
+    height: 28px;
+    border-radius: 2px;
+    transition: transform 0.2s, filter 0.2s;
+    cursor: pointer;
+    position: relative;
+  }
+
+  .heat-cell:hover {
+    transform: scale(1.3);
+    filter: brightness(1.5);
+    z-index: 10;
+  }
+
+  /* ── PRICING ── */
+  .pricing-section { background: var(--bg); }
+
+  .pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    margin-top: 60px;
+    border: 1px solid var(--border);
+  }
+
+  .pricing-card {
+    background: var(--bg2);
+    padding: 40px 32px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .pricing-card.featured {
+    background: var(--bg3);
+    border-top: 2px solid var(--electric);
+  }
+
+  .pricing-featured-badge {
+    position: absolute;
+    top: 20px; right: 20px;
+    padding: 4px 12px;
+    background: var(--electric);
+    color: #000;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    font-weight: 700;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .pricing-tier {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+
+  .pricing-price {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 60px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .pricing-price sup { font-size: 24px; vertical-align: top; margin-top: 12px; display: inline-block; }
+  .pricing-price .period { font-size: 16px; color: var(--muted); font-weight: 400; }
+
+  .pricing-desc {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 32px;
+    line-height: 1.5;
+  }
+
+  .pricing-features {
+    list-style: none;
+    margin-bottom: 36px;
+  }
+
+  .pricing-features li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text);
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+
+  .pricing-features li::before {
+    content: '◆';
+    color: var(--electric);
+    font-size: 8px;
+    margin-top: 3px;
+    flex-shrink: 0;
+  }
+
+  /* ── CTA BANNER ── */
+  .cta-section {
+    background: var(--bg3);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 80px 48px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .cta-section::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, rgba(0,229,255,0.06) 0%, transparent 70%);
+  }
+
+  .cta-section h2 { font-size: 56px; margin-bottom: 16px; }
+  .cta-section p { color: var(--muted); font-size: 16px; margin-bottom: 40px; }
+
+  .cta-actions { display: flex; gap: 16px; justify-content: center; }
+
+  /* ── FOOTER ── */
+  footer {
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    padding: 60px 48px 32px;
+  }
+
+  .footer-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 48px;
+    margin-bottom: 48px;
+  }
+
+  .footer-brand p {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.7;
+    margin-top: 16px;
+    max-width: 280px;
+  }
+
+  .footer-col h4 {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 20px;
+  }
+
+  .footer-col ul { list-style: none; }
+  .footer-col ul li { margin-bottom: 12px; }
+  .footer-col ul li a {
+    color: #607d8b;
+    text-decoration: none;
+    font-size: 13px;
+    transition: color 0.2s;
+  }
+  .footer-col ul li a:hover { color: var(--electric); }
+
+  .footer-bottom {
+    border-top: 1px solid var(--border);
+    padding-top: 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .footer-bottom p {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+  }
+
+  .footer-links {
+    display: flex;
+    gap: 24px;
+  }
+
+  .footer-links a {
+    color: var(--muted);
+    font-size: 12px;
+    text-decoration: none;
+    font-family: 'Space Mono', monospace;
+    transition: color 0.2s;
+  }
+
+  .footer-links a:hover { color: var(--electric); }
+
+  /* ── ANIMATIONS ── */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+
+  .fade-in.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ── TICKER ── */
+  .ticker-wrap {
+    background: rgba(0,229,255,0.06);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    overflow: hidden;
+    padding: 10px 0;
+  }
+
+  .ticker {
+    display: flex;
+    gap: 48px;
+    animation: ticker 30s linear infinite;
+    white-space: nowrap;
+  }
+
+  @keyframes ticker {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  .ticker-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  .ticker-item span { color: var(--electric); }
+  .ticker-item .up { color: var(--volt); }
+  .ticker-item .dn { color: var(--red); }
+
+  /* ── COUNTER ANIMATION ── */
+  @keyframes count-up {
+    from { opacity: 0.3; }
+    to { opacity: 1; }
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 1024px) {
+    nav { padding: 0 24px; }
+    .nav-links { display: none; }
+    .hero { padding: 100px 24px 60px; flex-direction: column; }
+    .hero-stats { position: static; transform: none; margin-top: 40px; flex-direction: row; flex-wrap: wrap; }
+    section { padding: 60px 24px; }
+    .dashboard-grid { grid-template-columns: 1fr; }
+    .dash-card.wide, .dash-card.full { grid-column: span 1; }
+    .features-grid { grid-template-columns: 1fr; }
+    .pricing-grid { grid-template-columns: 1fr; }
+    .forecast-layout { grid-template-columns: 1fr; }
+    .metrics-row { grid-template-columns: repeat(2, 1fr); }
+    .footer-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="#" class="nav-logo">
+    <div class="bolt"></div>
+    Volt<span>IQ</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#dashboard">Dashboard</a></li>
+    <li><a href="#forecast">Forecast</a></li>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#heatmap">Analytics</a></li>
+    <li><a href="#pricing">Pricing</a></li>
+  </ul>
+  <div class="nav-cta">
+    <button class="btn-ghost">Sign In</button>
+    <button class="btn-primary">Get Demo</button>
+  </div>
+</nav>
+
+<!-- TICKER -->
+<div class="ticker-wrap" style="margin-top:68px">
+  <div class="ticker" id="ticker">
+    <div class="ticker-item">GRID DEMAND <span>↑ 12.4 MW</span></div>
+    <div class="ticker-item">STATION ALPHA-7 <span class="up">ONLINE</span></div>
+    <div class="ticker-item">PEAK FORECAST <span>18:30 UTC</span></div>
+    <div class="ticker-item">ENERGY SAVINGS <span class="up">+$8,420/day</span></div>
+    <div class="ticker-item">STATION BETA-2 <span class="dn">HIGH LOAD</span></div>
+    <div class="ticker-item">RENEWABLE MIX <span>76.3%</span></div>
+    <div class="ticker-item">SESSIONS TODAY <span>2,847</span></div>
+    <div class="ticker-item">AVG CHARGE TIME <span>47 min</span></div>
+    <div class="ticker-item">CO₂ AVOIDED <span class="up">18.4 tons</span></div>
+    <div class="ticker-item">GRID DEMAND <span>↑ 12.4 MW</span></div>
+    <div class="ticker-item">STATION ALPHA-7 <span class="up">ONLINE</span></div>
+    <div class="ticker-item">PEAK FORECAST <span>18:30 UTC</span></div>
+    <div class="ticker-item">ENERGY SAVINGS <span class="up">+$8,420/day</span></div>
+    <div class="ticker-item">STATION BETA-2 <span class="dn">HIGH LOAD</span></div>
+    <div class="ticker-item">RENEWABLE MIX <span>76.3%</span></div>
+    <div class="ticker-item">SESSIONS TODAY <span>2,847</span></div>
+  </div>
+</div>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-grid"></div>
+  <div class="hero-glow-1"></div>
+  <div class="hero-glow-2"></div>
+
+  <div class="hero-content">
+    <div class="hero-badge">AI-Powered Platform · v4.2 Live</div>
+    <h1>
+      Predict &amp; Power
+      <em class="line2">EV Demand</em>
+      At Scale
+    </h1>
+    <p class="hero-sub">
+      Real-time demand forecasting, intelligent load balancing, and grid optimization for EV charging networks. Deploy smarter infrastructure with sub-minute prediction accuracy.
+    </p>
+    <div class="hero-actions">
+      <button class="btn-primary btn-large">Start Free Trial</button>
+      <button class="btn-ghost btn-large">View Live Demo →</button>
+    </div>
+  </div>
+
+  <div class="hero-stats">
+    <div class="stat-card">
+      <div class="stat-label">Live Sessions</div>
+      <div class="stat-value"><span id="sessions">2,847</span></div>
+      <div class="stat-delta">↑ +14% vs yesterday</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Energy Delivered</div>
+      <div class="stat-value"><span id="energy">148</span><span class="unit">MWh</span></div>
+      <div class="stat-delta">↑ +6.2% this week</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Forecast Accuracy</div>
+      <div class="stat-value"><span id="accuracy">98.3</span><span class="unit">%</span></div>
+      <div class="stat-delta">◆ 30-day rolling avg</div>
+    </div>
+  </div>
+</section>
+
+<!-- METRICS ROW -->
+<section style="padding:60px 48px 0; background: var(--bg2);">
+  <div class="metrics-row fade-in">
+    <div class="metric-box">
+      <div class="metric-trend trend-up">↑ 18%</div>
+      <div class="metric-num" style="color:var(--electric)">342</div>
+      <div class="metric-label">Active Charging Stations</div>
+    </div>
+    <div class="metric-box">
+      <div class="metric-trend trend-up">↑ 6.2%</div>
+      <div class="metric-num" style="color:var(--volt)">$84K</div>
+      <div class="metric-label">Revenue Optimized Today</div>
+    </div>
+    <div class="metric-box">
+      <div class="metric-trend trend-down">↓ 3%</div>
+      <div class="metric-num" style="color:var(--amber)">12ms</div>
+      <div class="metric-label">Avg Prediction Latency</div>
+    </div>
+    <div class="metric-box">
+      <div class="metric-trend trend-up">↑ 22%</div>
+      <div class="metric-num" style="color:#b388ff">18.4T</div>
+      <div class="metric-label">CO₂ Avoided (Tons)</div>
+    </div>
+  </div>
+</section>
+
+<!-- DASHBOARD -->
+<section class="dashboard-section" id="dashboard">
+  <div class="section-label">Live Dashboard</div>
+  <h2>Real-Time <em>Network</em> Status</h2>
+  <p class="section-desc">Monitor your entire EV charging infrastructure in one unified view — from individual ports to regional grid load.</p>
+
+  <div class="dashboard-grid">
+    <!-- Demand Chart -->
+    <div class="dash-card wide fade-in">
+      <div class="card-header">
+        <span class="card-title">Real-Time Demand (kW)</span>
+        <span class="card-status"><span class="status-dot"></span>Live · Updates every 30s</span>
+      </div>
+      <div class="chart-container">
+        <canvas id="demandChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Station List -->
+    <div class="dash-card fade-in">
+      <div class="card-header">
+        <span class="card-title">Station Status</span>
+        <span class="card-status"><span class="status-dot"></span>6 Active</span>
+      </div>
+      <div class="stations-grid">
+        <div class="stations-grid" id="stations-container"></div>
+        <div class="station-row">
+          <div class="station-icon active">⚡</div>
+          <div class="station-info">
+            <div class="station-name">Downtown Hub A</div>
+            <div class="station-loc">Ports: 12/12 active</div>
+          </div>
+          <div class="station-bar-wrap">
+            <div class="station-bar-label"><span>Load</span><span>94%</span></div>
+            <div class="station-bar"><div class="station-bar-fill fill-amber" style="width:94%"></div></div>
+          </div>
+        </div>
+        <div class="station-row">
+          <div class="station-icon active">⚡</div>
+          <div class="station-info">
+            <div class="station-name">Westside Mall</div>
+            <div class="station-loc">Ports: 8/20 active</div>
+          </div>
+          <div class="station-bar-wrap">
+            <div class="station-bar-label"><span>Load</span><span>42%</span></div>
+            <div class="station-bar"><div class="station-bar-fill fill-green" style="width:42%"></div></div>
+          </div>
+        </div>
+        <div class="station-row">
+          <div class="station-icon busy">⚡</div>
+          <div class="station-info">
+            <div class="station-name">Airport Terminal</div>
+            <div class="station-loc">Ports: 30/30 active</div>
+          </div>
+          <div class="station-bar-wrap">
+            <div class="station-bar-label"><span>Load</span><span>100%</span></div>
+            <div class="station-bar"><div class="station-bar-fill fill-red" style="width:100%"></div></div>
+          </div>
+        </div>
+        <div class="station-row">
+          <div class="station-icon active">⚡</div>
+          <div class="station-info">
+            <div class="station-name">North District</div>
+            <div class="station-loc">Ports: 5/16 active</div>
+          </div>
+          <div class="station-bar-wrap">
+            <div class="station-bar-label"><span>Load</span><span>31%</span></div>
+            <div class="station-bar"><div class="station-bar-fill fill-green" style="width:31%"></div></div>
+          </div>
+        </div>
+        <div class="station-row">
+          <div class="station-icon offline">⚡</div>
+          <div class="station-info">
+            <div class="station-name">East Highway Stop</div>
+            <div class="station-loc">Maintenance Mode</div>
+          </div>
+          <div class="station-bar-wrap">
+            <div class="station-bar-label"><span>Load</span><span>0%</span></div>
+            <div class="station-bar"><div class="station-bar-fill fill-red" style="width:0%"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Energy Mix -->
+    <div class="dash-card fade-in" style="animation-delay:0.1s">
+      <div class="card-header">
+        <span class="card-title">Energy Mix</span>
+        <span class="card-status" style="color:var(--volt)">◆ 76.3% Green</span>
+      </div>
+      <div class="chart-container">
+        <canvas id="energyMixChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Load Forecast -->
+    <div class="dash-card wide fade-in" style="animation-delay:0.2s">
+      <div class="card-header">
+        <span class="card-title">24h Load Forecast vs Actual</span>
+        <span class="card-status" style="color:var(--amber)">◆ Next peak: 18:30</span>
+      </div>
+      <div class="chart-container">
+        <canvas id="loadForecastChart"></canvas>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features-section" id="features">
+  <div class="section-label">Capabilities</div>
+  <h2>Built for Grid-Scale <em>Intelligence</em></h2>
+  <p class="section-desc">Every component of VoltIQ is engineered to extract maximum value from your charging network while keeping the grid stable.</p>
+
+  <div class="features-grid">
+    <div class="feature-card fade-in">
+      <span class="feature-icon">🤖</span>
+      <div class="feature-title">AI Demand Forecasting</div>
+      <div class="feature-desc">LSTM neural networks trained on historical usage, weather data, traffic patterns, and EV adoption rates deliver 30-minute ahead forecasts with 98.3% accuracy.</div>
+      <span class="feature-tag">ML · LSTM · Prophet</span>
+    </div>
+    <div class="feature-card fade-in" style="animation-delay:0.1s">
+      <span class="feature-icon">⚖️</span>
+      <div class="feature-title">Smart Load Balancing</div>
+      <div class="feature-desc">Dynamic power allocation across stations prevents grid overload. Our optimizer continuously redistributes load in real-time based on demand signals and pricing curves.</div>
+      <span class="feature-tag">Real-time · V2G Ready</span>
+    </div>
+    <div class="feature-card fade-in" style="animation-delay:0.2s">
+      <span class="feature-icon">💹</span>
+      <div class="feature-title">Revenue Optimization</div>
+      <div class="feature-desc">Dynamic pricing engine adjusts rates every 15 minutes based on demand, grid costs, and competitor pricing. Maximize revenue per kWh automatically.</div>
+      <span class="feature-tag">Dynamic Pricing · API</span>
+    </div>
+    <div class="feature-card fade-in" style="animation-delay:0.1s">
+      <span class="feature-icon">🌱</span>
+      <div class="feature-title">Renewable Integration</div>
+      <div class="feature-desc">Intelligently shift charging load to periods of high renewable energy availability. Track and report on Scope 2 emissions in real time for ESG compliance.</div>
+      <span class="feature-tag">ESG · Carbon Tracking</span>
+    </div>
+    <div class="feature-card fade-in" style="animation-delay:0.2s">
+      <span class="feature-icon">🛡️</span>
+      <div class="feature-title">Predictive Maintenance</div>
+      <div class="feature-desc">Anomaly detection flags hardware degradation weeks before failure. Reduce unplanned downtime by 73% with proactive maintenance scheduling.</div>
+      <span class="feature-tag">IoT · Anomaly Detection</span>
+    </div>
+    <div class="feature-card fade-in" style="animation-delay:0.3s">
+      <span class="feature-icon">🔌</span>
+      <div class="feature-title">Fleet Charging Coordination</div>
+      <div class="feature-desc">Coordinate large commercial and transit fleets with optimized charging windows, minimizing peak demand charges while ensuring all vehicles are ready on schedule.</div>
+      <span class="feature-tag">Fleet · Scheduling</span>
+    </div>
+  </div>
+</section>
+
+<!-- FORECAST SECTION -->
+<section class="forecast-section" id="forecast">
+  <div class="section-label">Forecasting Engine</div>
+  <h2>72-Hour <em>Demand</em> Outlook</h2>
+  <p class="section-desc">Multi-model ensemble forecasts combining weather APIs, calendar events, and historical seasonality patterns.</p>
+
+  <div class="forecast-layout">
+    <div>
+      <div class="forecast-controls">
+        <button class="time-btn active">24H</button>
+        <button class="time-btn">48H</button>
+        <button class="time-btn">72H</button>
+        <button class="time-btn">7D</button>
+        <button class="time-btn">30D</button>
+      </div>
+      <div class="forecast-chart-wrap fade-in">
+        <canvas id="forecastMain"></canvas>
+      </div>
+    </div>
+
+    <div class="insights-panel">
+      <div class="insight-card fade-in">
+        <div class="insight-header">
+          <div class="insight-icon">⚡</div>
+          <div class="insight-title">Peak Demand Window</div>
+        </div>
+        <div class="insight-body">Forecast shows demand spike of <strong>+34%</strong> between 17:00–19:30 today. Pre-staging recommended for 6 additional fast chargers.</div>
+        <div class="insight-value val-amber">18:30 UTC</div>
+      </div>
+      <div class="insight-card fade-in" style="animation-delay:0.1s">
+        <div class="insight-header">
+          <div class="insight-icon">🌤️</div>
+          <div class="insight-title">Weather Impact</div>
+        </div>
+        <div class="insight-body">Cold front arriving tomorrow at 06:00 UTC. Estimated range anxiety increase: <strong>+18%</strong> more sessions, longer average session duration.</div>
+        <div class="insight-value val-electric">+18% Sessions</div>
+      </div>
+      <div class="insight-card fade-in" style="animation-delay:0.2s">
+        <div class="insight-header">
+          <div class="insight-icon">💰</div>
+          <div class="insight-title">Savings Opportunity</div>
+        </div>
+        <div class="insight-body">Shift 22% of non-critical fleet charging to 02:00–06:00 window to capture off-peak grid pricing. Estimated daily saving:</div>
+        <div class="insight-value val-volt">$3,840</div>
+      </div>
+      <div class="insight-card fade-in" style="animation-delay:0.3s">
+        <div class="insight-header">
+          <div class="insight-icon">🔋</div>
+          <div class="insight-title">V2G Opportunity</div>
+        </div>
+        <div class="insight-body">Grid stress predicted at 17:45. Vehicle-to-grid discharge from 84 enrolled vehicles could offset peak by up to 2.4 MWh.</div>
+        <div class="insight-value val-electric">2.4 MWh</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HEATMAP -->
+<section class="heatmap-section" id="heatmap">
+  <div class="section-label">Demand Analytics</div>
+  <h2>Usage <em>Heatmap</em> — Weekly</h2>
+  <p class="section-desc">Hourly charging demand patterns across your network. Identify consistently high-demand windows to guide infrastructure expansion.</p>
+
+  <div id="heatmap-container" class="fade-in"></div>
+</section>
+
+<!-- PRICING -->
+<section class="pricing-section" id="pricing">
+  <div class="section-label">Plans & Pricing</div>
+  <h2>Choose Your <em>Scale</em></h2>
+  <p class="section-desc">From single operators to national networks — VoltIQ scales with your infrastructure.</p>
+
+  <div class="pricing-grid">
+    <div class="pricing-card">
+      <div class="pricing-tier">Starter</div>
+      <div class="pricing-price"><sup>$</sup>299<span class="period">/mo</span></div>
+      <div class="pricing-desc">For operators managing up to 25 stations. Everything you need to get started.</div>
+      <ul class="pricing-features">
+        <li>Up to 25 charging stations</li>
+        <li>24h demand forecasting</li>
+        <li>Basic load balancing</li>
+        <li>Real-time dashboard</li>
+        <li>Email alerts & reports</li>
+        <li>REST API access</li>
+        <li>Standard support</li>
+      </ul>
+      <button class="btn-ghost" style="width:100%; padding:12px; font-size:13px;">Start Free Trial</button>
+    </div>
+
+    <div class="pricing-card featured">
+      <div class="pricing-featured-badge">Most Popular</div>
+      <div class="pricing-tier">Professional</div>
+      <div class="pricing-price" style="color:var(--electric)"><sup style="color:var(--electric)">$</sup>899<span class="period">/mo</span></div>
+      <div class="pricing-desc">For growing networks. AI-powered optimization and revenue management included.</div>
+      <ul class="pricing-features">
+        <li>Up to 200 charging stations</li>
+        <li>72h multi-model forecasting</li>
+        <li>Smart load balancing + V2G</li>
+        <li>Dynamic pricing engine</li>
+        <li>Predictive maintenance</li>
+        <li>Fleet coordination module</li>
+        <li>Renewable energy tracking</li>
+        <li>Priority support + SLA</li>
+      </ul>
+      <button class="btn-primary" style="width:100%; padding:12px; font-size:13px; letter-spacing:0.1em;">Get Started</button>
+    </div>
+
+    <div class="pricing-card">
+      <div class="pricing-tier">Enterprise</div>
+      <div class="pricing-price">Custom</div>
+      <div class="pricing-desc">For national operators, utilities, and municipalities. Full white-label available.</div>
+      <ul class="pricing-features">
+        <li>Unlimited stations</li>
+        <li>Custom model training</li>
+        <li>White-label platform</li>
+        <li>Grid operator integrations</li>
+        <li>Regulatory reporting suite</li>
+        <li>On-premise deployment option</li>
+        <li>Dedicated engineering team</li>
+        <li>99.99% SLA guarantee</li>
+      </ul>
+      <button class="btn-ghost" style="width:100%; padding:12px; font-size:13px;">Talk to Sales</button>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <div style="position:relative;z-index:2">
+    <div class="section-label" style="justify-content:center">Get Started Today</div>
+    <h2>Ready to <em>Electrify</em><br>Your Network?</h2>
+    <p>Join 180+ operators optimizing over 12,000 charging stations with VoltIQ.</p>
+    <div class="cta-actions">
+      <button class="btn-primary btn-large">Start 14-Day Free Trial</button>
+      <button class="btn-ghost btn-large">Schedule a Demo</button>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <a href="#" class="nav-logo" style="font-size:20px; text-decoration:none; display:inline-flex">
+        <div class="bolt" style="width:24px;height:24px"></div>
+        Volt<span>IQ</span>
+      </a>
+      <p>AI-powered EV charging demand forecasting and grid optimization platform for operators at any scale.</p>
+    </div>
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <ul>
+        <li><a href="#">Dashboard</a></li>
+        <li><a href="#">Forecasting</a></li>
+        <li><a href="#">Load Balancing</a></li>
+        <li><a href="#">Fleet Management</a></li>
+        <li><a href="#">Analytics</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4>Developers</h4>
+      <ul>
+        <li><a href="#">API Reference</a></li>
+        <li><a href="#">Webhooks</a></li>
+        <li><a href="#">SDKs</a></li>
+        <li><a href="#">Changelog</a></li>
+        <li><a href="#">Status Page</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4>Company</h4>
+      <ul>
+        <li><a href="#">About</a></li>
+        <li><a href="#">Blog</a></li>
+        <li><a href="#">Careers</a></li>
+        <li><a href="#">Press</a></li>
+        <li><a href="#">Contact</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <p>© 2026 VoltIQ Technologies. All rights reserved.</p>
+    <div class="footer-links">
+      <a href="#">Privacy Policy</a>
+      <a href="#">Terms of Service</a>
+      <a href="#">Security</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+const supabaseUrl = 'https://rmahyplibcpvqbfxacgp.supabase.co'
+const supabaseKey = 'sb_publishable_Rhloe6zqDhCY7dwxwsEIhA_Em30JsvE'
+const _supabase = window.supabase.createClient(supabaseUrl, supabaseKey)
+
+console.log("VoltIQ: Attempting to connect to Supabase..."); 
+async function loadStations() {
+  // 1. Fetch data from Supabase
+  const { data: stations, error } = await _supabase
+    .from('charging_stations')
+    .select('*');
+
+  if (error) {
+    console.error('Error loading stations:', error);
+    return;
+  }
+
+  // 2. Find the container in your HTML
+  const container = document.getElementById('stations-container');
+  container.innerHTML = ''; // Clear the old static list
+
+  // 3. Loop through your real data and create the HTML
+  stations.forEach(station => {
+    const statusClass = station.status === 'active' ? 'active' : (station.status === 'busy' ? 'busy' : 'offline');
+    const barColor = station.power_load > 80 ? 'fill-red' : (station.power_load > 50 ? 'fill-amber' : 'fill-green');
+
+    container.innerHTML += `
+      <div class="station-row">
+        <div class="station-icon ${statusClass}">⚡</div>
+        <div class="station-info">
+          <div class="station-name">${station.name}</div>
+          <div class="station-loc">Status: ${station.status}</div>
+        </div>
+        <div class="station-bar-wrap">
+          <div class="station-bar-label"><span>Load</span><span>${station.power_load}%</span></div>
+          <div class="station-bar"><div class="station-bar-fill ${barColor}" style="width:${station.power_load}%"></div></div>
+        </div>
+      </div>
+    `;
+  });
+}
+
+// 4. Run the function immediately
+loadStations();
+// This tells Supabase to "watch" your table for any changes
+_supabase
+  .channel('table-db-changes')
+  .on(
+    'postgres_changes',
+    {
+      event: '*', // Listen for Inserts, Updates, and Deletes
+      schema: 'public',
+      table: 'charging_stations'
+    },
+    (payload) => {
+      console.log('Change received!', payload);
+      loadStations(); // Re-run our fetch function to update the UI
+    }
+  )
+  .subscribe();
+// ── SCROLL ANIMATIONS ──
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.1 });
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// ── TIME BUTTONS ──
+document.querySelectorAll('.time-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+// ── CHART.JS DEFAULTS ──
+Chart.defaults.color = '#607d8b';
+Chart.defaults.font.family = "'Space Mono', monospace";
+Chart.defaults.font.size = 10;
+
+// ── DEMAND CHART ──
+const demandCtx = document.getElementById('demandChart').getContext('2d');
+const now = new Date();
+const demandLabels = Array.from({length: 30}, (_, i) => {
+  const d = new Date(now - (29-i)*2*60000);
+  return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+});
+let demandData = Array.from({length: 30}, () => Math.round(1200 + Math.random()*600));
+
+const demandChart = new Chart(demandCtx, {
+  type: 'line',
+  data: {
+    labels: demandLabels,
+    datasets: [{
+      label: 'Demand kW',
+      data: demandData,
+      borderColor: '#00e5ff',
+      backgroundColor: 'rgba(0,229,255,0.06)',
+      fill: true,
+      tension: 0.4,
+      borderWidth: 1.5,
+      pointRadius: 0,
+    }]
+  },
+  options: {
+    animation: false,
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { maxTicksLimit: 6 } },
+      y: { grid: { color: 'rgba(255,255,255,0.04)' }, min: 800, ticks: { callback: v => v/1000 + ' GW' } }
+    }
+  }
+});
+
+// Live update demand
+// 1. Function to fetch history from Supabase
+async function updateDemandChart() {
+  const { data, error } = await _supabase
+    .from('demand_history')
+    .select('created_at, kw_value')
+    .order('created_at', { ascending: false })
+    .limit(30); // Get the last 30 data points
+
+  if (data) {
+    // Reverse them so they go left-to-right (oldest to newest)
+    const sortedData = data.reverse();
+    
+    // Update Chart Labels (Time) and Data (kW)
+    demandChart.data.labels = sortedData.map(row => {
+      const d = new Date(row.created_at);
+      return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+    });
+    demandChart.data.datasets[0].data = sortedData.map(row => row.kw_value);
+    
+    demandChart.update('none');
+  }
+  // Update the ticker with the latest value
+const latestKW = sortedData[sortedData.length - 1].kw_value;
+document.querySelector('.ticker-item span').textContent = `↑ ${(latestKW / 100).toFixed(1)} MW`;
+}
+
+// 2. Initial load
+updateDemandChart();
+
+// 3. Real-time listener: Whenever a new row is added to demand_history, update the chart
+_supabase
+  .channel('demand-updates')
+  .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'demand_history' }, () => {
+    updateDemandChart();
+  })
+  .subscribe();
+
+// ── ENERGY MIX CHART ──
+const emCtx = document.getElementById('energyMixChart').getContext('2d');
+new Chart(emCtx, {
+  type: 'doughnut',
+  data: {
+    labels: ['Solar', 'Wind', 'Hydro', 'Natural Gas', 'Grid'],
+    datasets: [{
+      data: [34, 28, 14, 16, 8],
+      backgroundColor: ['#76ff03','#00e5ff','#00bcd4','#ffab00','#607d8b'],
+      borderColor: '#0a1929',
+      borderWidth: 3,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: '70%',
+    plugins: {
+      legend: {
+        position: 'right',
+        labels: { boxWidth: 8, padding: 12, font: { size: 10 } }
+      }
+    }
+  }
+});
+
+// ── LOAD FORECAST CHART ──
+const lfCtx = document.getElementById('loadForecastChart').getContext('2d');
+const hours = Array.from({length:24}, (_,i) => i.toString().padStart(2,'0') + ':00');
+const actual = [820,740,690,650,640,660,780,1100,1450,1600,1580,1540,1600,1580,1520,1600,1800,2100,2200,2050,1800,1500,1200,950];
+const forecast = [850,760,700,660,650,680,800,1120,1430,1580,1600,1560,1580,1600,1540,1620,1850,2150,2180,2030,1780,1480,1180,930];
+const forecastFuture = forecast.map((v,i) => i >= 15 ? v : null);
+const actualCut = actual.map((v,i) => i >= 15 ? null : v);
+
+new Chart(lfCtx, {
+  type: 'line',
+  data: {
+    labels: hours,
+    datasets: [
+      {
+        label: 'Actual',
+        data: actualCut,
+        borderColor: '#00e5ff',
+        backgroundColor: 'rgba(0,229,255,0.05)',
+        fill: true,
+        tension: 0.4,
+        borderWidth: 2,
+        pointRadius: 0,
+      },
+      {
+        label: 'Forecast',
+        data: forecastFuture,
+        borderColor: '#ffab00',
+        backgroundColor: 'rgba(255,171,0,0.05)',
+        fill: true,
+        tension: 0.4,
+        borderWidth: 2,
+        borderDash: [4,4],
+        pointRadius: 0,
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top', labels: { boxWidth: 12 } }
+    },
+    scales: {
+      x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { maxTicksLimit: 8 } },
+      y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { callback: v => (v/1000).toFixed(1) + ' MW' } }
+    }
+  }
+});
+
+// ── FORECAST MAIN CHART ──
+const fmCtx = document.getElementById('forecastMain').getContext('2d');
+const fmLabels = Array.from({length:48}, (_,i) => {
+  const h = i % 24;
+  return (h === 0 ? 'Day ' + (Math.floor(i/24)+1) + ' ' : '') + h.toString().padStart(2,'0') + ':00';
+}).filter((_,i) => i % 2 === 0);
+
+const baseForecast = Array.from({length:24}, (_,i) => {
+  return 800 + 1200 * Math.sin(((i - 6) / 24) * Math.PI) + Math.random()*100;
+});
+
+const upper = baseForecast.map(v => v * 1.08 + 50);
+const lower = baseForecast.map(v => v * 0.92 - 50);
+
+new Chart(fmCtx, {
+  type: 'line',
+  data: {
+    labels: fmLabels,
+    datasets: [
+      {
+        label: 'Forecast',
+        data: baseForecast,
+        borderColor: '#00e5ff',
+        borderWidth: 2,
+        tension: 0.4,
+        pointRadius: 0,
+        fill: false,
+      },
+      {
+        label: 'Upper Band',
+        data: upper,
+        borderColor: 'transparent',
+        backgroundColor: 'rgba(0,229,255,0.08)',
+        tension: 0.4,
+        pointRadius: 0,
+        fill: '+1',
+      },
+      {
+        label: 'Lower Band',
+        data: lower,
+        borderColor: 'transparent',
+        backgroundColor: 'rgba(0,229,255,0.08)',
+        tension: 0.4,
+        pointRadius: 0,
+        fill: false,
+      },
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false }
+    },
+    scales: {
+      x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { maxTicksLimit: 8 } },
+      y: { grid: { color: 'rgba(255,255,255,0.04)' }, min: 0, ticks: { callback: v => (v/1000).toFixed(1) + ' MW' } }
+    }
+  }
+});
+
+// ── HEATMAP ──
+const days = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
+const heatContainer = document.getElementById('heatmap-container');
+const grid = document.createElement('div');
+grid.className = 'heatmap-grid';
+
+// Header row
+const emptyCell = document.createElement('div');
+grid.appendChild(emptyCell);
+for (let h = 0; h < 24; h++) {
+  const label = document.createElement('div');
+  label.className = 'heat-col-label';
+  label.textContent = h.toString().padStart(2,'0');
+  grid.appendChild(label);
+}
+
+// Data rows
+const palette = [
+  [10, 30, 60, 0.2],
+  [0, 100, 180, 0.4],
+  [0, 180, 230, 0.5],
+  [118, 255, 3, 0.5],
+  [255, 171, 0, 0.6],
+  [255, 87, 34, 0.7],
+  [255, 23, 68, 0.85],
+];
+
+days.forEach(day => {
+  const label = document.createElement('div');
+  label.className = 'heat-label';
+  label.textContent = day;
+  grid.appendChild(label);
+
+  for (let h = 0; h < 24; h++) {
+    let intensity;
+    if (day === 'SAT' || day === 'SUN') {
+      intensity = h >= 10 && h <= 18 ? 0.6 + Math.random()*0.4 : 0.1 + Math.random()*0.3;
+    } else {
+      intensity = (h >= 7 && h <= 9) || (h >= 17 && h <= 20)
+        ? 0.7 + Math.random()*0.3
+        : h >= 11 && h <= 14
+        ? 0.4 + Math.random()*0.3
+        : 0.05 + Math.random()*0.2;
+    }
+
+    const pIdx = Math.min(palette.length - 1, Math.floor(intensity * palette.length));
+    const [r, g, b, a] = palette[pIdx];
+
+    const cell = document.createElement('div');
+    cell.className = 'heat-cell';
+    cell.style.background = `rgba(${r},${g},${b},${a})`;
+    cell.title = `${day} ${h.toString().padStart(2,'0')}:00 — Load: ${Math.round(intensity*100)}%`;
+    grid.appendChild(cell);
+  }
+});
+
+heatContainer.appendChild(grid);
+
+// ── LIVE COUNTER UPDATES ──
+function animateCounter(el, target, decimals = 0) {
+  const start = parseFloat(el.textContent.replace(/,/g, ''));
+  const duration = 1000;
+  const startTime = performance.now();
+  const fn = (now) => {
+    const t = Math.min((now - startTime) / duration, 1);
+    const val = start + (target - start) * t;
+    el.textContent = decimals > 0
+      ? val.toFixed(decimals)
+      : Math.round(val).toLocaleString();
+    if (t < 1) requestAnimationFrame(fn);
+  };
+  requestAnimationFrame(fn);
+}
+
+setInterval(() => {
+  const sessEl = document.getElementById('sessions');
+  const energyEl = document.getElementById('energy');
+  if (sessEl) animateCounter(sessEl, 2800 + Math.floor(Math.random()*200));
+  if (energyEl) animateCounter(energyEl, 140 + Math.floor(Math.random()*20));
+}, 5000);
+
+// Station bar micro-updates
+setInterval(() => {
+  document.querySelectorAll('.station-bar-fill').forEach(bar => {
+    const currentWidth = parseInt(bar.style.width);
+    const change = (Math.random() - 0.5) * 10;
+    const newWidth = Math.max(0, Math.min(100, currentWidth + change));
+    bar.style.width = newWidth + '%';
+  });
+}, 3000);
+</script>
+</body>
+</html>
