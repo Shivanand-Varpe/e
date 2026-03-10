@@ -1074,7 +1074,32 @@ footer {
     </div>
   </div>
 </div>
+<div class="modal-backdrop" id="authModal" role="dialog" aria-modal="true">
+  <div class="modal" style="max-width: 400px;">
+    <button class="modal-close" id="closeAuthModal" aria-label="Close">✕</button>
+    <h3 id="authTitle">Sign In</h3>
+    <p class="modal-subtitle" id="authSubtitle">Access your VoltIQ dashboard</p>
 
+    <div class="add-review-form" style="border-top: none; padding-top: 0;">
+      <label for="authEmail">Email</label>
+      <input type="email" id="authEmail" class="review-textarea" style="min-height: 40px; margin-bottom: 16px;" placeholder="operator@voltiq.com">
+
+      <label for="authPassword">Password</label>
+      <input type="password" id="authPassword" class="review-textarea" style="min-height: 40px; margin-bottom: 16px;" placeholder="••••••••">
+
+      <div id="roleSelection" style="display: none; margin-bottom: 16px;">
+        <label>Select Role</label>
+        <select id="authRole" class="review-textarea" style="min-height: 40px; width: 100%; background: var(--bg2); color: var(--text); border: 1px solid var(--border);">
+          <option value="admin">Grid Administrator</option>
+          <option value="operator">Station Operator</option>
+        </select>
+      </div>
+
+      <button class="btn-primary" id="authSubmitBtn" style="width: 100%; margin-bottom: 12px;">Sign In</button>
+      <button class="btn-ghost" id="authToggleBtn" style="width: 100%;">Create an account instead</button>
+    </div>
+  </div>
+</div>
 <!-- NAV -->
 <nav>
   <a href="#" class="nav-logo" aria-label="VoltIQ Home">
@@ -1088,7 +1113,7 @@ footer {
     <li><a href="#heatmap">Analytics</a></li>
   </ul>
   <div class="nav-cta">
-    <button class="btn-ghost" onclick="showToast('Sign-in coming soon!','info')">Sign In</button>
+    <button class="btn-ghost" id="navSignInBtn">Sign In</button>
     <button class="btn-primary" onclick="showToast('Demo request sent! We\'ll be in touch.','success')">Get Demo</button>
   </div>
 </nav>
@@ -1160,7 +1185,7 @@ footer {
 </section>
 
 <!-- METRICS ROW -->
-<div class="metrics-wrap">
+<div class="metrics-wrap admin-only">
   <div class="metrics-row fade-in">
     <div class="metric-box">
       <div class="metric-trend trend-up">↑ 18%</div>
@@ -1366,7 +1391,7 @@ footer {
 </section>
 
 <!-- HEATMAP -->
-<section class="heatmap-section" id="heatmap">
+<section class="heatmap-section admin-only" id="heatmap">
   <div class="section-label">Demand Analytics</div>
   <h2>Usage <em>Heatmap</em> — Weekly</h2>
   <p class="section-desc">Hourly charging demand patterns across your network. Hover any cell for details.</p>
@@ -1445,6 +1470,114 @@ const SUPABASE_URL = 'https://rmahyplibcpvqbfxacgp.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_Rhloe6zqDhCY7dwxwsEIhA_Em30JsvE';
 const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+/* ════════════════════════════════════
+   AUTH & ROLE-BASED ACCESS
+════════════════════════════════════ */
+const authModal = document.getElementById('authModal');
+const closeAuthModal = document.getElementById('closeAuthModal');
+const authSubmitBtn = document.getElementById('authSubmitBtn');
+const authToggleBtn = document.getElementById('authToggleBtn');
+const roleSelection = document.getElementById('roleSelection');
+const authTitle = document.getElementById('authTitle');
+const navSignInBtn = document.getElementById('navSignInBtn');
+
+let isLoginMode = true;
+let currentUser = null;
+let userRole = null;
+
+// Toggle Modal
+navSignInBtn.onclick = () => {
+  if (currentUser) handleSignOut();
+  else authModal.classList.add('open');
+};
+closeAuthModal.onclick = () => authModal.classList.remove('open');
+
+// Toggle between Login and Register
+authToggleBtn.onclick = () => {
+  isLoginMode = !isLoginMode;
+  authTitle.textContent = isLoginMode ? 'Sign In' : 'Register';
+  authSubmitBtn.textContent = isLoginMode ? 'Sign In' : 'Create Account';
+  authToggleBtn.textContent = isLoginMode ? 'Create an account instead' : 'Already have an account? Sign in';
+  roleSelection.style.display = isLoginMode ? 'none' : 'block';
+};
+
+// Handle Submit
+authSubmitBtn.onclick = async () => {
+  const email = document.getElementById('authEmail').value;
+  const password = document.getElementById('authPassword').value;
+  const role = document.getElementById('authRole').value;
+
+  authSubmitBtn.disabled = true;
+  authSubmitBtn.textContent = 'Processing...';
+
+  if (isLoginMode) {
+    const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
+    if (error) showToast(error.message, 'error');
+    else handleAuthSuccess(data.user);
+  } else {
+    const { data, error } = await _supabase.auth.signUp({
+      email, password,
+      options: { data: { role: role } }
+    });
+    if (error) showToast(error.message, 'error');
+    else {
+      showToast('Registration successful! Logging in...', 'success');
+      handleAuthSuccess(data.user);
+    }
+  }
+
+  authSubmitBtn.disabled = false;
+  authSubmitBtn.textContent = isLoginMode ? 'Sign In' : 'Create Account';
+};
+
+function handleAuthSuccess(user) {
+  currentUser = user;
+  userRole = user.user_metadata?.role || 'operator';
+  authModal.classList.remove('open');
+  navSignInBtn.textContent = 'Sign Out';
+  showToast(`Logged in as ${userRole.toUpperCase()}`, 'success');
+  applyRoleBasedUI();
+}
+
+async function handleSignOut() {
+  await _supabase.auth.signOut();
+  currentUser = null;
+  userRole = null;
+  navSignInBtn.textContent = 'Sign In';
+  showToast('Signed out successfully.', 'info');
+  
+  document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
+  document.querySelector('.section-desc').textContent = "Monitor your entire EV charging infrastructure in one unified view.";
+}
+
+_supabase.auth.getSession().then(({ data: { session } }) => {
+  if (session) handleAuthSuccess(session.user);
+});
+
+function applyRoleBasedUI() {
+  const adminElements = document.querySelectorAll('.admin-only');
+  const dashboardDesc = document.querySelector('.section-desc');
+
+  if (userRole === 'admin') {
+    adminElements.forEach(el => el.style.display = 'block');
+    dashboardDesc.textContent = "Global Bird's-Eye View: Monitoring entire grid infrastructure and regional load.";
+    
+    if(typeof originalForecast !== 'undefined') {
+        currentForecastData = [...originalForecast];
+        forecastMainChart.update();
+    }
+  } else if (userRole === 'operator') {
+    adminElements.forEach(el => el.style.display = 'none');
+    dashboardDesc.textContent = "Operator View: Monitoring localized charging nodes and specific hardware metrics.";
+    showToast('Global grid metrics hidden for Operator access.', 'info');
+
+    if(typeof currentForecastData !== 'undefined') {
+        currentForecastData = currentForecastData.map(v => v * 0.15);
+        forecastMainChart.data.datasets[0].data = currentForecastData;
+        forecastMainChart.update();
+    }
+  }
+}
 /* ── TOAST NOTIFICATIONS ── */
 let toastTimer = null;
 function showToast(msg, type = 'info') {
