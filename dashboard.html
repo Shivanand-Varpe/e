@@ -721,9 +721,9 @@ footer{background:var(--bg);border-top:1px solid var(--border);padding:48px 48px
      FIREBASE + ALL SCRIPTS
 ══════════════════════════════════ -->
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
-import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js";
-import { getFirestore, collection, getDocs, doc, getDoc, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, collection, getDocs, doc, getDoc, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey:"AIzaSyDhC7n1OHawDfcOC0HvA5C80vmjJIYN90g",
@@ -775,8 +775,9 @@ onAuthStateChanged(auth, async user => {
 });
 
 window.handleLogout = async function(){
-  await signOut(auth);
+  sessionStorage.setItem('voltiq_no_redirect','1');
   sessionStorage.removeItem('voltiq_user');
+  await signOut(auth);
   showToast('Logged out.','success');
   setTimeout(()=>window.location.reload(),800);
 };

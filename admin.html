@@ -476,9 +476,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:900;display:flex;align-items:cen
 </div><!-- end admin-page -->
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
-import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js";
-import { getFirestore, collection, getDocs, doc, getDoc, updateDoc, deleteDoc, query, orderBy, where } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, collection, getDocs, doc, getDoc, updateDoc, deleteDoc, query, orderBy, where } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey:"AIzaSyDhC7n1OHawDfcOC0HvA5C80vmjJIYN90g",
@@ -712,8 +712,15 @@ function renderApprovals(){
 window.approveOwner = async function(uid){
   try {
     await updateDoc(doc(db,'users',uid),{status:'active'});
-    // Also approve their station doc
-    await updateDoc(doc(db,'stations',uid+'_station'),{approved:true,status:'active'});
+    // Find station by ownerId query, fallback to convention
+    try {
+      const stSnap = await getDocs(query(collection(db,'stations'), where('ownerId','==',uid)));
+      if(!stSnap.empty){
+        await updateDoc(doc(db,'stations',stSnap.docs[0].id),{approved:true,status:'active'});
+      } else {
+        try { await updateDoc(doc(db,'stations',uid+'_station'),{approved:true,status:'active'}); } catch(_){}
+      }
+    } catch(_){}
     const u = allUsers.find(x=>x.id===uid);
     if(u) u.status='active';
     pendingOwners = pendingOwners.filter(p=>p.id!==uid);
@@ -883,6 +890,8 @@ document.getElementById('planModal').addEventListener('click',e=>{ if(e.target==
 
 /* ── LOGOUT ── */
 window.handleLogout = async function(){
+  sessionStorage.setItem('voltiq_no_redirect','1');
+  sessionStorage.removeItem('voltiq_user');
   await signOut(auth);
   showToast('Logged out.','success');
   setTimeout(()=>window.location.href='login.html',800);

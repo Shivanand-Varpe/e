@@ -578,9 +578,9 @@ nav{position:fixed;top:0;left:0;right:0;z-index:900;display:flex;align-items:cen
 </div><!-- end owner-page -->
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
-import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, updateDoc, collection, addDoc, query, where, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, doc, getDoc, updateDoc, collection, addDoc, query, where, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey:"AIzaSyDhC7n1OHawDfcOC0HvA5C80vmjJIYN90g",
@@ -899,12 +899,12 @@ window.saveHoursContact = async function(){
 /* ── HISTORY ── */
 async function loadHistory(){
   try {
+    // Note: removed orderBy to avoid needing composite index; sort client-side
     const snap = await getDocs(query(
       collection(db,'station_updates'),
-      where('ownerId','==',currentUser.uid),
-      orderBy('timestamp','desc')
+      where('ownerId','==',currentUser.uid)
     ));
-    if(!snap.empty) historyLog = snap.docs.map(d=>d.data());
+    if(!snap.empty) historyLog = snap.docs.map(d=>d.data()).sort((a,b)=>b.timestamp.localeCompare(a.timestamp));
   } catch(e){}
   renderHistory();
 }
@@ -929,6 +929,8 @@ function renderHistory(){
 
 /* ── LOGOUT ── */
 window.handleLogout = async function(){
+  sessionStorage.setItem('voltiq_no_redirect','1');
+  sessionStorage.removeItem('voltiq_user');
   await signOut(auth);
   showToast('Logged out.','success');
   setTimeout(()=>window.location.href='login.html',800);

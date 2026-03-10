@@ -379,9 +379,9 @@ body::before{
 </div>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 /* ── FIREBASE CONFIG ── */
 const firebaseConfig = {
@@ -612,16 +612,25 @@ window.handleLogin = async function() {
   }
 };
 
-/* ── AUTO SESSION CHECK ── */
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js";
+/* ── AUTO SESSION CHECK ── 
+   Only auto-redirect if user didn't explicitly navigate here to log in/out.
+   We check for a "noRedirect" flag set by logout flows.
+── */
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+const _noAutoRedirect = sessionStorage.getItem('voltiq_no_redirect');
+if(_noAutoRedirect) sessionStorage.removeItem('voltiq_no_redirect');
+
 onAuthStateChanged(auth, async (user) => {
-  if(user){
-    const snap = await getDoc(doc(db,'users',user.uid));
-    if(snap.exists()){
-      const data = snap.data();
-      sessionStorage.setItem('voltiq_user', JSON.stringify({ uid:user.uid, role:data.role, name:data.name, email:data.email, plan:data.plan }));
-      redirectByRole(data.role);
-    }
+  if(user && !_noAutoRedirect){
+    try {
+      const snap = await getDoc(doc(db,'users',user.uid));
+      if(snap.exists()){
+        const data = snap.data();
+        if(data.status === 'pending') return; // don't auto-redirect pending owners
+        sessionStorage.setItem('voltiq_user', JSON.stringify({ uid:user.uid, role:data.role, name:data.name, email:data.email, plan:data.plan }));
+        redirectByRole(data.role);
+      }
+    } catch(e) { /* Network error — just stay on login page */ }
   }
 });
 </script>
