@@ -1,0 +1,2104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoltIQ — EV Charging Demand Forecast & Optimization</title>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Supabase -->
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+<!-- Chart.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/* ── CSS VARIABLES ── */
+:root {
+  --bg:       #040b14;
+  --bg2:      #071220;
+  --bg3:      #0a1929;
+  --electric: #00e5ff;
+  --volt:     #76ff03;
+  --amber:    #ffab00;
+  --red:      #ff1744;
+  --purple:   #b388ff;
+  --surface:  rgba(0,229,255,0.04);
+  --border:   rgba(0,229,255,0.12);
+  --text:     #e0f7fa;
+  --muted:    #607d8b;
+  --glow:     0 0 30px rgba(0,229,255,0.25);
+  --radius:   4px;
+}
+
+/* ── RESET ── */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-weight: 300;
+  overflow-x: hidden;
+  line-height: 1.5;
+}
+
+/* ── NOISE OVERLAY ── */
+body::before {
+  content:'';
+  position:fixed;
+  inset:0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events:none;
+  z-index:1000;
+  opacity:0.35;
+}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width:4px; }
+::-webkit-scrollbar-track { background:var(--bg); }
+::-webkit-scrollbar-thumb { background:var(--electric); border-radius:2px; }
+
+/* ── ANIMATIONS ── */
+@keyframes pulse-bolt {
+  0%,100% { filter:drop-shadow(0 0 8px var(--electric)); }
+  50%      { filter:drop-shadow(0 0 20px var(--electric)) drop-shadow(0 0 36px var(--electric)); }
+}
+@keyframes blink {
+  0%,100% { opacity:1; }
+  50%      { opacity:0.2; }
+}
+@keyframes shimmer {
+  0%   { transform:translateX(-100%); }
+  100% { transform:translateX(100%); }
+}
+@keyframes grid-shift {
+  0%   { transform:translateY(0); }
+  100% { transform:translateY(60px); }
+}
+@keyframes ticker {
+  0%   { transform:translateX(0); }
+  100% { transform:translateX(-50%); }
+}
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(24px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+@keyframes scanline {
+  0%   { top:-100%; }
+  100% { top:200%; }
+}
+
+/* ── NAV ── */
+nav {
+  position:fixed;
+  top:0; left:0; right:0;
+  z-index:900;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 48px;
+  height:68px;
+  background:rgba(4,11,20,0.9);
+  backdrop-filter:blur(24px);
+  border-bottom:1px solid var(--border);
+  transition:background 0.3s;
+}
+
+.nav-logo {
+  display:flex;
+  align-items:center;
+  gap:12px;
+  font-family:'Rajdhani', sans-serif;
+  font-size:24px;
+  font-weight:700;
+  color:#fff;
+  text-decoration:none;
+  letter-spacing:0.02em;
+}
+.nav-logo .bolt {
+  width:32px; height:32px;
+  background:var(--electric);
+  clip-path:polygon(60% 0%,40% 45%,70% 45%,30% 100%,55% 55%,25% 55%);
+  filter:drop-shadow(0 0 8px var(--electric));
+  animation:pulse-bolt 2s ease-in-out infinite;
+  flex-shrink:0;
+}
+.nav-logo span { color:var(--electric); }
+
+.nav-links { display:flex; gap:36px; list-style:none; }
+.nav-links a {
+  color:var(--muted);
+  text-decoration:none;
+  font-size:12px;
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  font-weight:500;
+  transition:color 0.2s;
+  position:relative;
+  padding-bottom:2px;
+}
+.nav-links a::after {
+  content:'';
+  position:absolute;
+  bottom:-2px; left:0;
+  width:0; height:1px;
+  background:var(--electric);
+  transition:width 0.3s;
+}
+.nav-links a:hover { color:var(--electric); }
+.nav-links a:hover::after { width:100%; }
+
+.nav-cta { display:flex; gap:12px; align-items:center; }
+
+/* ── BUTTONS ── */
+.btn-ghost {
+  padding:8px 20px;
+  border:1px solid var(--border);
+  background:transparent;
+  color:var(--text);
+  font-size:12px;
+  font-weight:500;
+  cursor:pointer;
+  letter-spacing:0.06em;
+  transition:all 0.2s;
+  font-family:'Inter', sans-serif;
+  border-radius:var(--radius);
+}
+.btn-ghost:hover {
+  border-color:var(--electric);
+  color:var(--electric);
+  background:rgba(0,229,255,0.05);
+}
+
+.btn-primary {
+  padding:8px 24px;
+  background:var(--electric);
+  border:none;
+  color:#000;
+  font-size:12px;
+  font-weight:700;
+  cursor:pointer;
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  transition:all 0.2s;
+  font-family:'Rajdhani', sans-serif;
+  position:relative;
+  overflow:hidden;
+  border-radius:var(--radius);
+}
+.btn-primary::after {
+  content:'';
+  position:absolute; inset:0;
+  background:#fff;
+  opacity:0;
+  transition:opacity 0.2s;
+}
+.btn-primary:hover::after { opacity:0.15; }
+.btn-primary:hover { box-shadow:0 0 24px rgba(0,229,255,0.5); }
+.btn-primary:active { transform:scale(0.98); }
+
+.btn-large { padding:14px 36px; font-size:13px; }
+
+/* ── TICKER ── */
+.ticker-wrap {
+  background:rgba(0,229,255,0.05);
+  border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border);
+  overflow:hidden;
+  padding:10px 0;
+  margin-top:68px;
+}
+.ticker {
+  display:flex;
+  gap:48px;
+  animation:ticker 30s linear infinite;
+  white-space:nowrap;
+}
+.ticker-wrap:hover .ticker { animation-play-state:paused; }
+
+.ticker-item {
+  display:flex;
+  align-items:center;
+  gap:12px;
+  font-family:'Space Mono', monospace;
+  font-size:11px;
+  color:var(--muted);
+  flex-shrink:0;
+}
+.ticker-item span { color:var(--electric); }
+.ticker-item .up  { color:var(--volt); }
+.ticker-item .dn  { color:var(--red); }
+.ticker-sep { color:var(--border); }
+
+/* ── HERO ── */
+.hero {
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  padding:100px 48px 60px;
+  position:relative;
+  overflow:hidden;
+}
+.hero-grid {
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(rgba(0,229,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,229,255,0.04) 1px, transparent 1px);
+  background-size:60px 60px;
+  animation:grid-shift 20s linear infinite;
+}
+.hero-glow-1 {
+  position:absolute;
+  width:700px; height:700px;
+  background:radial-gradient(circle, rgba(0,229,255,0.07) 0%, transparent 70%);
+  top:-150px; right:-150px;
+  pointer-events:none;
+}
+.hero-glow-2 {
+  position:absolute;
+  width:450px; height:450px;
+  background:radial-gradient(circle, rgba(118,255,3,0.05) 0%, transparent 70%);
+  bottom:0; left:200px;
+  pointer-events:none;
+}
+
+.hero-content {
+  position:relative;
+  z-index:2;
+  max-width:680px;
+  animation:fadeUp 0.8s ease both;
+}
+
+.hero-badge {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 16px;
+  border:1px solid rgba(118,255,3,0.3);
+  background:rgba(118,255,3,0.06);
+  color:var(--volt);
+  font-size:11px;
+  letter-spacing:0.15em;
+  text-transform:uppercase;
+  font-weight:600;
+  margin-bottom:28px;
+  font-family:'Space Mono', monospace;
+  border-radius:2px;
+}
+.hero-badge::before {
+  content:'';
+  width:6px; height:6px;
+  background:var(--volt);
+  border-radius:50%;
+  animation:blink 1.5s ease-in-out infinite;
+}
+
+h1 {
+  font-family:'Rajdhani', sans-serif;
+  font-size:clamp(52px,6vw,86px);
+  font-weight:700;
+  line-height:0.95;
+  letter-spacing:-0.02em;
+  margin-bottom:24px;
+  text-transform:uppercase;
+}
+h1 .line2 {
+  display:block;
+  color:var(--electric);
+  text-shadow:0 0 40px rgba(0,229,255,0.35);
+}
+
+.hero-sub {
+  font-size:16px;
+  color:var(--muted);
+  line-height:1.75;
+  max-width:500px;
+  margin-bottom:40px;
+}
+.hero-actions {
+  display:flex;
+  gap:16px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+/* ── HERO STATS ── */
+.hero-stats {
+  position:absolute;
+  right:48px; top:50%;
+  transform:translateY(-50%);
+  z-index:2;
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+.stat-card {
+  background:var(--surface);
+  border:1px solid var(--border);
+  padding:20px 28px;
+  min-width:210px;
+  position:relative;
+  overflow:hidden;
+  backdrop-filter:blur(12px);
+  transition:border-color 0.3s, box-shadow 0.3s;
+  border-radius:var(--radius);
+}
+.stat-card:hover {
+  border-color:rgba(0,229,255,0.3);
+  box-shadow:var(--glow);
+}
+.stat-card::before {
+  content:'';
+  position:absolute;
+  top:0; left:0; right:0;
+  height:2px;
+  background:linear-gradient(90deg, transparent, var(--electric), transparent);
+  animation:shimmer 3s ease-in-out infinite;
+}
+.stat-card:nth-child(2)::before { background:linear-gradient(90deg, transparent, var(--volt), transparent); animation-delay:1s; }
+.stat-card:nth-child(3)::before { background:linear-gradient(90deg, transparent, var(--amber), transparent); animation-delay:2s; }
+
+.stat-label {
+  font-size:10px;
+  letter-spacing:0.15em;
+  text-transform:uppercase;
+  color:var(--muted);
+  margin-bottom:8px;
+  font-family:'Space Mono', monospace;
+}
+.stat-value {
+  font-family:'Rajdhani', sans-serif;
+  font-size:44px;
+  font-weight:700;
+  line-height:1;
+  color:#fff;
+}
+.stat-value .unit { font-size:20px; color:var(--electric); }
+.stat-delta { font-size:11px; color:var(--volt); margin-top:6px; font-family:'Space Mono', monospace; }
+
+/* ── SECTIONS ── */
+section { padding:100px 48px; position:relative; }
+
+.section-label {
+  font-family:'Space Mono', monospace;
+  font-size:10px;
+  letter-spacing:0.2em;
+  text-transform:uppercase;
+  color:var(--electric);
+  margin-bottom:16px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+.section-label::before {
+  content:'';
+  width:32px; height:1px;
+  background:var(--electric);
+  flex-shrink:0;
+}
+
+h2 {
+  font-family:'Rajdhani', sans-serif;
+  font-size:clamp(36px,4vw,56px);
+  font-weight:700;
+  letter-spacing:-0.01em;
+  text-transform:uppercase;
+  line-height:1;
+  margin-bottom:16px;
+}
+h2 em { color:var(--electric); font-style:normal; }
+
+.section-desc {
+  color:var(--muted);
+  font-size:15px;
+  line-height:1.75;
+  max-width:560px;
+  margin-bottom:60px;
+}
+
+/* ── METRICS ROW ── */
+.metrics-wrap {
+  padding:60px 48px 0;
+  background:var(--bg2);
+}
+.metrics-row {
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:16px;
+  margin-bottom:0;
+}
+.metric-box {
+  border:1px solid var(--border);
+  padding:24px;
+  position:relative;
+  overflow:hidden;
+  background:var(--surface);
+  transition:border-color 0.3s, box-shadow 0.3s;
+  border-radius:var(--radius);
+}
+.metric-box:hover { border-color:rgba(0,229,255,0.3); box-shadow:var(--glow); }
+.metric-box::after {
+  content:'';
+  position:absolute;
+  bottom:0; left:0; right:0;
+  height:2px;
+}
+.metric-box:nth-child(1)::after { background:var(--electric); }
+.metric-box:nth-child(2)::after { background:var(--volt); }
+.metric-box:nth-child(3)::after { background:var(--amber); }
+.metric-box:nth-child(4)::after { background:var(--purple); }
+
+.metric-num {
+  font-family:'Rajdhani', sans-serif;
+  font-size:48px;
+  font-weight:700;
+  line-height:1;
+  margin-bottom:8px;
+}
+.metric-label { font-size:12px; color:var(--muted); letter-spacing:0.05em; }
+.metric-trend {
+  position:absolute;
+  top:24px; right:24px;
+  font-size:11px;
+  font-family:'Space Mono', monospace;
+}
+.trend-up  { color:var(--volt); }
+.trend-down{ color:var(--red);  }
+
+/* ── DASHBOARD ── */
+.dashboard-section {
+  background:var(--bg2);
+  border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border);
+}
+.dashboard-grid {
+  display:grid;
+  grid-template-columns:1fr 1fr 1fr;
+  grid-template-rows:auto auto;
+  gap:16px;
+  margin-top:16px;
+}
+.dash-card {
+  background:var(--bg3);
+  border:1px solid var(--border);
+  padding:24px;
+  position:relative;
+  overflow:hidden;
+  transition:border-color 0.3s, box-shadow 0.3s;
+  border-radius:var(--radius);
+}
+.dash-card:hover { border-color:rgba(0,229,255,0.28); box-shadow:var(--glow); }
+.dash-card.wide { grid-column:span 2; }
+.dash-card.full { grid-column:span 3; }
+
+/* Scanline effect on hover */
+.dash-card::after {
+  content:'';
+  position:absolute;
+  left:0; right:0;
+  height:2px;
+  background:linear-gradient(transparent, rgba(0,229,255,0.08), transparent);
+  top:-100%;
+  transition:none;
+  pointer-events:none;
+}
+.dash-card:hover::after { animation:scanline 2s linear infinite; }
+
+.card-header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:20px;
+}
+.card-title {
+  font-family:'Space Mono', monospace;
+  font-size:11px;
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.card-status {
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-size:11px;
+  color:var(--volt);
+  font-family:'Space Mono', monospace;
+}
+.status-dot {
+  width:6px; height:6px;
+  background:var(--volt);
+  border-radius:50%;
+  animation:blink 1.5s ease-in-out infinite;
+}
+
+/* ── STATIONS LIST ── */
+.stations-grid { display:grid; gap:8px; }
+.station-row {
+  display:flex;
+  align-items:center;
+  gap:16px;
+  padding:12px;
+  border:1px solid transparent;
+  transition:all 0.2s;
+  cursor:pointer;
+  border-radius:var(--radius);
+}
+.station-row:hover {
+  border-color:var(--border);
+  background:rgba(0,229,255,0.03);
+}
+.station-icon {
+  width:36px; height:36px;
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:16px;
+  flex-shrink:0;
+}
+.station-icon.active  { background:rgba(118,255,3,0.15); color:var(--volt); }
+.station-icon.busy    { background:rgba(255,171,0,0.15);  color:var(--amber); }
+.station-icon.offline { background:rgba(255,23,68,0.15);  color:var(--red); }
+
+.station-info  { flex:1; min-width:0; }
+.station-name  { font-size:13px; font-weight:500; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.station-loc   { font-size:11px; color:var(--muted); font-family:'Space Mono', monospace; }
+.station-bar-wrap { width:100px; flex-shrink:0; }
+.station-bar-label {
+  display:flex;
+  justify-content:space-between;
+  font-size:10px;
+  color:var(--muted);
+  font-family:'Space Mono', monospace;
+  margin-bottom:4px;
+}
+.station-bar { height:4px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden; }
+.station-bar-fill { height:100%; border-radius:2px; transition:width 1s ease; }
+.fill-green { background:var(--volt);  box-shadow:0 0 8px rgba(118,255,3,0.5); }
+.fill-amber { background:var(--amber); box-shadow:0 0 8px rgba(255,171,0,0.5); }
+.fill-red   { background:var(--red); }
+
+/* ── CHART CONTAINERS ── */
+.chart-container { position:relative; height:200px; }
+
+/* ── FEATURES SECTION ── */
+.features-section { background:var(--bg); }
+.features-grid {
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:1px;
+  border:1px solid var(--border);
+  margin-top:60px;
+  background:var(--border);
+}
+.feature-card {
+  background:var(--bg2);
+  padding:40px 32px;
+  position:relative;
+  overflow:hidden;
+  transition:background 0.3s;
+}
+.feature-card:hover { background:var(--bg3); }
+.feature-card::before {
+  content:'';
+  position:absolute;
+  top:0; left:0;
+  width:2px; height:0;
+  background:var(--electric);
+  transition:height 0.4s ease;
+}
+.feature-card:hover::before { height:100%; }
+
+.feature-icon  { font-size:28px; margin-bottom:20px; display:block; }
+.feature-title {
+  font-family:'Rajdhani', sans-serif;
+  font-size:22px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:0.02em;
+  margin-bottom:12px;
+  color:#fff;
+}
+.feature-desc { font-size:14px; color:var(--muted); line-height:1.75; }
+.feature-tag {
+  display:inline-block;
+  margin-top:20px;
+  padding:4px 12px;
+  border:1px solid rgba(0,229,255,0.2);
+  color:var(--electric);
+  font-size:10px;
+  letter-spacing:0.15em;
+  text-transform:uppercase;
+  font-family:'Space Mono', monospace;
+  border-radius:2px;
+}
+
+/* ── FORECAST SECTION ── */
+.forecast-section { background:var(--bg2); border-top:1px solid var(--border); }
+.forecast-layout {
+  display:grid;
+  grid-template-columns:1fr 380px;
+  gap:40px;
+  align-items:start;
+}
+.forecast-controls { display:flex; gap:8px; margin-bottom:24px; flex-wrap:wrap; }
+.time-btn {
+  padding:6px 16px;
+  border:1px solid var(--border);
+  background:transparent;
+  color:var(--muted);
+  font-size:11px;
+  cursor:pointer;
+  font-family:'Space Mono', monospace;
+  letter-spacing:0.08em;
+  transition:all 0.2s;
+  border-radius:2px;
+}
+.time-btn.active {
+  border-color:var(--electric);
+  color:var(--electric);
+  background:rgba(0,229,255,0.06);
+}
+.time-btn:hover:not(.active) {
+  border-color:rgba(0,229,255,0.3);
+  color:var(--text);
+}
+
+.forecast-chart-wrap {
+  background:var(--bg3);
+  border:1px solid var(--border);
+  padding:24px;
+  position:relative;
+  border-radius:var(--radius);
+}
+.forecast-chart-wrap canvas { height:300px !important; }
+
+.insights-panel { display:flex; flex-direction:column; gap:16px; }
+.insight-card {
+  background:var(--bg3);
+  border:1px solid var(--border);
+  padding:20px;
+  position:relative;
+  border-radius:var(--radius);
+  transition:border-color 0.3s;
+}
+.insight-card:hover { border-color:rgba(0,229,255,0.25); }
+
+.insight-header { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.insight-icon {
+  width:32px; height:32px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:16px;
+  flex-shrink:0;
+}
+.insight-title {
+  font-size:13px;
+  font-weight:600;
+  font-family:'Rajdhani', sans-serif;
+  letter-spacing:0.05em;
+  text-transform:uppercase;
+}
+.insight-body { font-size:13px; color:var(--muted); line-height:1.65; }
+.insight-value { font-family:'Space Mono', monospace; font-size:24px; font-weight:700; margin-top:8px; }
+.val-electric { color:var(--electric); }
+.val-volt     { color:var(--volt); }
+.val-amber    { color:var(--amber); }
+
+/* ── MAP SECTION ── */
+.map-section { background:var(--bg); border-top:1px solid var(--border); }
+#map {
+  height:500px;
+  border-radius:8px;
+  border:1px solid var(--border);
+  z-index:1;
+  margin-top:16px;
+}
+
+/* ── HEATMAP ── */
+.heatmap-section { background:var(--bg2); border-top:1px solid var(--border); }
+.heatmap-grid {
+  display:grid;
+  grid-template-columns:80px repeat(24,1fr);
+  gap:3px;
+  margin-top:24px;
+}
+.heat-label {
+  font-size:10px;
+  color:var(--muted);
+  font-family:'Space Mono', monospace;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  padding-right:8px;
+}
+.heat-col-label {
+  font-size:9px;
+  color:var(--muted);
+  font-family:'Space Mono', monospace;
+  text-align:center;
+  padding-bottom:4px;
+}
+.heat-cell {
+  height:28px;
+  border-radius:2px;
+  transition:transform 0.2s, filter 0.2s;
+  cursor:pointer;
+}
+.heat-cell:hover { transform:scale(1.3); filter:brightness(1.6); z-index:10; position:relative; }
+
+/* ── CTA SECTION ── */
+.cta-section {
+  background:var(--bg3);
+  border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border);
+  padding:80px 48px;
+  text-align:center;
+  position:relative;
+  overflow:hidden;
+}
+.cta-section::before {
+  content:'';
+  position:absolute; inset:0;
+  background:radial-gradient(ellipse at center, rgba(0,229,255,0.06) 0%, transparent 70%);
+  pointer-events:none;
+}
+.cta-section h2  { font-size:clamp(40px,5vw,56px); margin-bottom:16px; }
+.cta-section > p { color:var(--muted); font-size:16px; margin-bottom:40px; position:relative; z-index:1; }
+.cta-actions { display:flex; gap:16px; justify-content:center; position:relative; z-index:1; }
+
+/* ── FOOTER ── */
+footer {
+  background:var(--bg);
+  border-top:1px solid var(--border);
+  padding:60px 48px 32px;
+}
+.footer-grid {
+  display:grid;
+  grid-template-columns:2fr 1fr 1fr 1fr;
+  gap:48px;
+  margin-bottom:48px;
+}
+.footer-brand p {
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.75;
+  margin-top:16px;
+  max-width:280px;
+}
+.footer-col h4 {
+  font-family:'Space Mono', monospace;
+  font-size:10px;
+  letter-spacing:0.2em;
+  text-transform:uppercase;
+  color:var(--muted);
+  margin-bottom:20px;
+}
+.footer-col ul { list-style:none; }
+.footer-col ul li { margin-bottom:12px; }
+.footer-col ul li a {
+  color:#607d8b;
+  text-decoration:none;
+  font-size:13px;
+  transition:color 0.2s;
+}
+.footer-col ul li a:hover { color:var(--electric); }
+.footer-bottom {
+  border-top:1px solid var(--border);
+  padding-top:32px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:16px;
+}
+.footer-bottom p { font-size:12px; color:var(--muted); font-family:'Space Mono', monospace; }
+.footer-links { display:flex; gap:24px; flex-wrap:wrap; }
+.footer-links a {
+  color:var(--muted);
+  font-size:12px;
+  text-decoration:none;
+  font-family:'Space Mono', monospace;
+  transition:color 0.2s;
+}
+.footer-links a:hover { color:var(--electric); }
+
+/* ── SCROLL FADE-IN ── */
+.fade-in { opacity:0; transform:translateY(20px); transition:opacity 0.65s ease, transform 0.65s ease; }
+.fade-in.visible { opacity:1; transform:translateY(0); }
+
+/* ── LOADING SPINNER ── */
+.loading-state {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  padding:20px;
+  color:var(--muted);
+  font-family:'Space Mono', monospace;
+  font-size:11px;
+}
+.loading-state::before {
+  content:'';
+  width:14px; height:14px;
+  border:2px solid var(--border);
+  border-top-color:var(--electric);
+  border-radius:50%;
+  animation:spin 0.8s linear infinite;
+  flex-shrink:0;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* ── TOAST NOTIFICATION ── */
+#toast {
+  position:fixed;
+  bottom:24px; right:24px;
+  z-index:9999;
+  background:var(--bg3);
+  border:1px solid var(--border);
+  color:var(--text);
+  padding:14px 20px;
+  font-size:12px;
+  font-family:'Space Mono', monospace;
+  border-radius:var(--radius);
+  box-shadow:0 8px 32px rgba(0,0,0,0.5);
+  opacity:0;
+  transform:translateY(12px);
+  transition:opacity 0.3s, transform 0.3s;
+  pointer-events:none;
+  max-width:320px;
+}
+#toast.show { opacity:1; transform:translateY(0); pointer-events:all; }
+#toast.success { border-color:rgba(118,255,3,0.4); }
+#toast.error   { border-color:rgba(255,23,68,0.4); }
+
+/* ── REVIEWS MODAL ── */
+.modal-backdrop {
+  position:fixed; inset:0;
+  background:rgba(4,11,20,0.85);
+  backdrop-filter:blur(8px);
+  z-index:800;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity 0.3s;
+}
+.modal-backdrop.open { opacity:1; pointer-events:all; }
+
+.modal {
+  background:var(--bg3);
+  border:1px solid var(--border);
+  padding:40px;
+  width:100%;
+  max-width:520px;
+  position:relative;
+  border-radius:var(--radius);
+  box-shadow:0 24px 80px rgba(0,0,0,0.6);
+  transform:scale(0.95) translateY(16px);
+  transition:transform 0.3s;
+}
+.modal-backdrop.open .modal { transform:scale(1) translateY(0); }
+
+.modal-close {
+  position:absolute;
+  top:16px; right:16px;
+  background:none;
+  border:1px solid var(--border);
+  color:var(--muted);
+  width:32px; height:32px;
+  cursor:pointer;
+  font-size:16px;
+  display:flex; align-items:center; justify-content:center;
+  transition:all 0.2s;
+  border-radius:var(--radius);
+}
+.modal-close:hover { color:var(--electric); border-color:var(--electric); }
+
+.modal h3 {
+  font-family:'Rajdhani', sans-serif;
+  font-size:24px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:0.05em;
+  margin-bottom:8px;
+  color:#fff;
+}
+.modal-subtitle { font-size:13px; color:var(--muted); margin-bottom:28px; font-family:'Space Mono', monospace; }
+
+.reviews-list { display:flex; flex-direction:column; gap:12px; margin-bottom:28px; max-height:260px; overflow-y:auto; }
+.review-item {
+  background:var(--bg2);
+  border:1px solid var(--border);
+  padding:14px 16px;
+  border-radius:var(--radius);
+}
+.review-meta { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+.review-stars { color:var(--amber); font-size:13px; letter-spacing:2px; }
+.review-user  { font-size:11px; color:var(--muted); font-family:'Space Mono', monospace; }
+.review-comment { font-size:13px; color:var(--text); line-height:1.6; }
+
+.add-review-form { border-top:1px solid var(--border); padding-top:20px; }
+.add-review-form label {
+  display:block;
+  font-size:11px;
+  color:var(--muted);
+  font-family:'Space Mono', monospace;
+  letter-spacing:0.1em;
+  margin-bottom:8px;
+  text-transform:uppercase;
+}
+.star-select { display:flex; gap:8px; margin-bottom:20px; }
+.star-btn {
+  background:none;
+  border:none;
+  font-size:22px;
+  cursor:pointer;
+  color:var(--muted);
+  transition:color 0.2s, transform 0.15s;
+  padding:0;
+  line-height:1;
+}
+.star-btn.selected, .star-btn:hover { color:var(--amber); transform:scale(1.2); }
+
+.review-textarea {
+  width:100%;
+  background:var(--bg2);
+  border:1px solid var(--border);
+  color:var(--text);
+  font-family:'Inter', sans-serif;
+  font-size:13px;
+  padding:12px;
+  resize:vertical;
+  min-height:80px;
+  border-radius:var(--radius);
+  transition:border-color 0.2s;
+  outline:none;
+}
+.review-textarea:focus { border-color:var(--electric); }
+.review-textarea::placeholder { color:var(--muted); }
+
+.submit-review-btn {
+  margin-top:16px;
+  width:100%;
+  padding:12px;
+  text-align:center;
+}
+
+/* ── REVIEWS TRIGGER ── */
+.reviews-trigger {
+  display:flex;
+  align-items:center;
+  gap:12px;
+  cursor:pointer;
+  padding:12px 16px;
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  transition:all 0.2s;
+  margin-top:16px;
+  background:rgba(255,171,0,0.04);
+}
+.reviews-trigger:hover { border-color:rgba(255,171,0,0.4); background:rgba(255,171,0,0.06); }
+.reviews-trigger .rt-icon { font-size:20px; }
+.reviews-trigger .rt-text { font-family:'Rajdhani', sans-serif; font-size:14px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; }
+.reviews-trigger .rt-count { font-family:'Space Mono', monospace; font-size:11px; color:var(--muted); margin-left:auto; }
+
+/* ── RESPONSIVE ── */
+@media (max-width:1024px) {
+  nav { padding:0 24px; }
+  .nav-links { display:none; }
+  .hero { padding:100px 24px 60px; flex-direction:column; }
+  .hero-stats { position:static; transform:none; margin-top:40px; flex-direction:row; flex-wrap:wrap; }
+  .stat-card { min-width:160px; }
+  section { padding:60px 24px; }
+  .metrics-wrap { padding:40px 24px 0; }
+  .dashboard-grid { grid-template-columns:1fr; }
+  .dash-card.wide, .dash-card.full { grid-column:span 1; }
+  .features-grid { grid-template-columns:1fr; }
+  .forecast-layout { grid-template-columns:1fr; }
+  .metrics-row { grid-template-columns:repeat(2,1fr); }
+  .footer-grid { grid-template-columns:1fr 1fr; }
+  .hero-glow-1 { width:300px; height:300px; }
+}
+
+@media (max-width:600px) {
+  nav { padding:0 16px; }
+  .hero { padding:90px 16px 40px; }
+  section { padding:40px 16px; }
+  .metrics-wrap { padding:24px 16px 0; }
+  .metrics-row { grid-template-columns:1fr 1fr; }
+  footer { padding:40px 16px 24px; }
+  .footer-grid { grid-template-columns:1fr; gap:24px; }
+  .hero-stats { display:none; }
+  .cta-actions { flex-direction:column; align-items:center; }
+}
+</style>
+</head>
+<body>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- REVIEWS MODAL -->
+<div class="modal-backdrop" id="reviewsModal" role="dialog" aria-modal="true" aria-label="Station Reviews">
+  <div class="modal">
+    <button class="modal-close" id="closeModal" aria-label="Close">✕</button>
+    <h3>Station Reviews</h3>
+    <p class="modal-subtitle" id="modalStationName">Loading...</p>
+    <div class="reviews-list" id="reviewsList">
+      <div class="loading-state">Loading reviews…</div>
+    </div>
+    <div class="add-review-form">
+      <label>Your Rating</label>
+      <div class="star-select" id="starSelect">
+        <button class="star-btn" data-v="1" aria-label="1 star">★</button>
+        <button class="star-btn" data-v="2" aria-label="2 stars">★</button>
+        <button class="star-btn" data-v="3" aria-label="3 stars">★</button>
+        <button class="star-btn" data-v="4" aria-label="4 stars">★</button>
+        <button class="star-btn" data-v="5" aria-label="5 stars">★</button>
+      </div>
+      <label for="reviewComment">Comment</label>
+      <textarea class="review-textarea" id="reviewComment" placeholder="Share your experience at this station…" maxlength="400"></textarea>
+      <button class="btn-primary submit-review-btn" id="submitReview">Submit Review</button>
+    </div>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <a href="#" class="nav-logo" aria-label="VoltIQ Home">
+    <div class="bolt" aria-hidden="true"></div>
+    Volt<span>IQ</span>
+  </a>
+  <ul class="nav-links" role="list">
+    <li><a href="#dashboard">Dashboard</a></li>
+    <li><a href="#forecast">Forecast</a></li>
+    <li><a href="#network-map">Network</a></li>
+    <li><a href="#heatmap">Analytics</a></li>
+  </ul>
+  <div class="nav-cta">
+    <button class="btn-ghost" onclick="showToast('Sign-in coming soon!','info')">Sign In</button>
+    <button class="btn-primary" onclick="showToast('Demo request sent! We\'ll be in touch.','success')">Get Demo</button>
+  </div>
+</nav>
+
+<!-- LIVE TICKER -->
+<div class="ticker-wrap" aria-hidden="true">
+  <div class="ticker" id="ticker">
+    <div class="ticker-item">GRID DEMAND <span>↑ 12.4 MW</span></div>
+    <div class="ticker-item">STATION ALPHA-7 <span class="up">ONLINE</span></div>
+    <div class="ticker-item">PEAK FORECAST <span>18:30 UTC</span></div>
+    <div class="ticker-item">ENERGY SAVINGS <span class="up">+$8,420/day</span></div>
+    <div class="ticker-item">STATION BETA-2 <span class="dn">HIGH LOAD</span></div>
+    <div class="ticker-item">RENEWABLE MIX <span>76.3%</span></div>
+    <div class="ticker-item">SESSIONS TODAY <span>2,847</span></div>
+    <div class="ticker-item">AVG CHARGE TIME <span>47 min</span></div>
+    <div class="ticker-item">CO₂ AVOIDED <span class="up">18.4 tons</span></div>
+    <!-- duplicate for seamless loop -->
+    <div class="ticker-item">GRID DEMAND <span>↑ 12.4 MW</span></div>
+    <div class="ticker-item">STATION ALPHA-7 <span class="up">ONLINE</span></div>
+    <div class="ticker-item">PEAK FORECAST <span>18:30 UTC</span></div>
+    <div class="ticker-item">ENERGY SAVINGS <span class="up">+$8,420/day</span></div>
+    <div class="ticker-item">STATION BETA-2 <span class="dn">HIGH LOAD</span></div>
+    <div class="ticker-item">RENEWABLE MIX <span>76.3%</span></div>
+    <div class="ticker-item">SESSIONS TODAY <span>2,847</span></div>
+    <div class="ticker-item">AVG CHARGE TIME <span>47 min</span></div>
+    <div class="ticker-item">CO₂ AVOIDED <span class="up">18.4 tons</span></div>
+  </div>
+</div>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-grid" aria-hidden="true"></div>
+  <div class="hero-glow-1" aria-hidden="true"></div>
+  <div class="hero-glow-2" aria-hidden="true"></div>
+
+  <div class="hero-content">
+    <div class="hero-badge">AI-Powered Platform · v4.2 Live</div>
+    <h1>
+      Predict &amp; Power
+      <em class="line2">EV Demand</em>
+      At Scale
+    </h1>
+    <p class="hero-sub">
+      Real-time demand forecasting, intelligent load balancing, and grid optimization for EV charging networks. Deploy smarter infrastructure with sub-minute prediction accuracy.
+    </p>
+    <div class="hero-actions">
+      <button class="btn-primary btn-large" onclick="showToast('Starting free trial…','success')">Start Free Trial</button>
+      <button class="btn-ghost btn-large" onclick="document.getElementById('dashboard').scrollIntoView({behavior:'smooth'})">View Live Demo →</button>
+    </div>
+  </div>
+
+  <div class="hero-stats" aria-label="Live metrics">
+    <div class="stat-card">
+      <div class="stat-label">Live Sessions</div>
+      <div class="stat-value"><span id="sessions">2,847</span></div>
+      <div class="stat-delta">↑ +14% vs yesterday</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Energy Delivered</div>
+      <div class="stat-value"><span id="energy">148</span><span class="unit">MWh</span></div>
+      <div class="stat-delta">↑ +6.2% this week</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Forecast Accuracy</div>
+      <div class="stat-value"><span id="accuracy">98.3</span><span class="unit">%</span></div>
+      <div class="stat-delta">◆ 30-day rolling avg</div>
+    </div>
+  </div>
+</section>
+
+<!-- METRICS ROW -->
+<div class="metrics-wrap">
+  <div class="metrics-row fade-in">
+    <div class="metric-box">
+      <div class="metric-trend trend-up">↑ 18%</div>
+      <div class="metric-num" style="color:var(--electric)">342</div>
+      <div class="metric-label">Active Charging Stations</div>
+    </div>
+    <div class="metric-box">
+      <div class="metric-trend trend-up">↑ 6.2%</div>
+      <div class="metric-num" style="color:var(--volt)">$84K</div>
+      <div class="metric-label">Revenue Optimized Today</div>
+    </div>
+    <div class="metric-box">
+      <div class="metric-trend trend-down">↓ 3%</div>
+      <div class="metric-num" style="color:var(--amber)">12ms</div>
+      <div class="metric-label">Avg Prediction Latency</div>
+    </div>
+    <div class="metric-box">
+      <div class="metric-trend trend-up">↑ 22%</div>
+      <div class="metric-num" style="color:var(--purple)">18.4T</div>
+      <div class="metric-label">CO₂ Avoided (Tons)</div>
+    </div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<section class="dashboard-section" id="dashboard">
+  <div class="section-label">Live Dashboard</div>
+  <h2>Real-Time <em>Network</em> Status</h2>
+  <p class="section-desc">Monitor your entire EV charging infrastructure in one unified view — from individual ports to regional grid load.</p>
+
+  <div class="dashboard-grid">
+    <!-- Real-time Demand Chart -->
+    <div class="dash-card wide fade-in">
+      <div class="card-header">
+        <span class="card-title">Real-Time Demand (kW)</span>
+        <span class="card-status"><span class="status-dot"></span>Live · Updates every 30s</span>
+      </div>
+      <div class="chart-container">
+        <canvas id="demandChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Station Status (from Supabase) -->
+    <div class="dash-card fade-in">
+      <div class="card-header">
+        <span class="card-title">Station Status</span>
+        <span class="card-status" id="stationCountLabel"><span class="status-dot"></span>Loading…</span>
+      </div>
+      <div class="stations-grid" id="stations-container">
+        <div class="loading-state">Connecting to network…</div>
+      </div>
+      <!-- Reviews trigger -->
+      <div class="reviews-trigger" id="reviewsTrigger" title="View & add station reviews" style="display:none">
+        <span class="rt-icon">⭐</span>
+        <span class="rt-text">Station Reviews</span>
+        <span class="rt-count" id="reviewsTriggerCount">0 reviews</span>
+      </div>
+    </div>
+
+    <!-- Energy Mix Donut -->
+    <div class="dash-card fade-in" style="animation-delay:0.1s">
+      <div class="card-header">
+        <span class="card-title">Energy Mix</span>
+        <span class="card-status" style="color:var(--volt)">◆ 76.3% Green</span>
+      </div>
+      <div class="chart-container">
+        <canvas id="energyMixChart"></canvas>
+      </div>
+    </div>
+
+    <!-- 24h Load Forecast vs Actual (from Supabase) -->
+    <div class="dash-card wide fade-in" style="animation-delay:0.2s">
+      <div class="card-header">
+        <span class="card-title">24h Load Forecast vs Actual</span>
+        <span class="card-status" style="color:var(--amber)">◆ Next peak: 18:30</span>
+      </div>
+      <div class="chart-container">
+        <canvas id="loadForecastChart"></canvas>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- NETWORK MAP -->
+<section class="map-section" id="network-map">
+  <div class="section-label">Live Network</div>
+  <h2>Station <em>Locations</em></h2>
+  <p class="section-desc">Real-time geospatial view of active EV charging nodes across the grid. The map automatically frames all active stations.</p>
+  <div id="map" role="application" aria-label="Station map"></div>
+</section>
+
+<!-- FEATURES -->
+<section class="features-section" id="features">
+  <div class="section-label">Core Capabilities</div>
+  <h2>Built For <em>Grid</em> Scale</h2>
+  <p class="section-desc">Enterprise infrastructure meets real-time intelligence. Every feature is designed to maximize uptime and minimize costs.</p>
+
+  <div class="features-grid">
+    <div class="feature-card">
+      <span class="feature-icon">🧠</span>
+      <div class="feature-title">AI Demand Forecasting</div>
+      <p class="feature-desc">Ensemble models trained on 50M+ charging events. Predict load 72 hours ahead with 98%+ accuracy.</p>
+      <span class="feature-tag">ML-Powered</span>
+    </div>
+    <div class="feature-card">
+      <span class="feature-icon">⚡</span>
+      <div class="feature-title">Dynamic Load Balancing</div>
+      <p class="feature-desc">Automatically redistribute power across ports to prevent grid overloads and reduce peak demand charges.</p>
+      <span class="feature-tag">Real-Time</span>
+    </div>
+    <div class="feature-card">
+      <span class="feature-icon">🔋</span>
+      <div class="feature-title">V2G Integration</div>
+      <p class="feature-desc">Deploy idle fleet batteries as virtual power plants. Sell back to the grid during peak stress events.</p>
+      <span class="feature-tag">Vehicle-to-Grid</span>
+    </div>
+    <div class="feature-card">
+      <span class="feature-icon">🌐</span>
+      <div class="feature-title">Fleet Management</div>
+      <p class="feature-desc">Coordinate thousands of vehicles with smart charging schedules optimized for off-peak pricing windows.</p>
+      <span class="feature-tag">Enterprise</span>
+    </div>
+    <div class="feature-card">
+      <span class="feature-icon">📡</span>
+      <div class="feature-title">Real-Time Analytics</div>
+      <p class="feature-desc">Sub-second telemetry from every charging port. Instant alerts, anomaly detection, and performance insights.</p>
+      <span class="feature-tag">Live Data</span>
+    </div>
+    <div class="feature-card">
+      <span class="feature-icon">🔌</span>
+      <div class="feature-title">Open API Platform</div>
+      <p class="feature-desc">REST & WebSocket APIs, Webhooks, and SDK support for seamless integration with OCPP, ERP, and fleet systems.</p>
+      <span class="feature-tag">Developer-First</span>
+    </div>
+  </div>
+</section>
+
+<!-- FORECAST -->
+<section class="forecast-section" id="forecast">
+  <div class="section-label">Forecasting Engine</div>
+  <h2>72-Hour <em>Demand</em> Outlook</h2>
+  <p class="section-desc">Multi-model ensemble forecasts combining weather APIs, calendar events, and historical seasonality patterns.</p>
+
+  <div class="forecast-layout">
+    <div>
+      <div class="forecast-controls" role="group" aria-label="Forecast time range">
+        <button class="time-btn active">24H</button>
+        <button class="time-btn">48H</button>
+        <button class="time-btn">72H</button>
+        <button class="time-btn">7D</button>
+        <button class="time-btn">30D</button>
+      </div>
+      <div class="forecast-chart-wrap fade-in">
+        <canvas id="forecastMain"></canvas>
+      </div>
+    </div>
+
+    <div class="insights-panel">
+      <!-- V2G Panel -->
+      <div class="insight-card fade-in" style="border-color:var(--electric); box-shadow:0 0 20px rgba(0,229,255,0.12);">
+        <div class="insight-header">
+          <div class="insight-icon" style="color:var(--volt)">⚡</div>
+          <div class="insight-title">Active Load Balancing (V2G)</div>
+        </div>
+        <div class="insight-body" style="margin-bottom:16px;">
+          Grid stress detected. Discharge idle fleet batteries back to the grid to shave peak demand and reduce wholesale energy costs.
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <span style="font-size:11px; color:var(--muted); font-family:'Space Mono',monospace;">AVAILABLE V2G FLEET</span>
+          <span style="font-size:14px; color:#fff; font-family:'Rajdhani',sans-serif; font-weight:700;">84 VEHICLES</span>
+        </div>
+        <button id="v2g-deploy-btn" class="btn-primary" style="width:100%; text-align:center;">Deploy V2G Fleet</button>
+      </div>
+
+      <div class="insight-card fade-in" style="animation-delay:0.1s">
+        <div class="insight-header">
+          <div class="insight-icon">🌤️</div>
+          <div class="insight-title">Weather Impact</div>
+        </div>
+        <div class="insight-body">Cold front arriving tomorrow at 06:00 UTC. Estimated range anxiety increase: <strong>+18%</strong> more sessions, longer average session duration.</div>
+        <div class="insight-value val-electric">+18% Sessions</div>
+      </div>
+
+      <div class="insight-card fade-in" style="animation-delay:0.2s">
+        <div class="insight-header">
+          <div class="insight-icon">💰</div>
+          <div class="insight-title">Savings Opportunity</div>
+        </div>
+        <div class="insight-body">Shift 22% of non-critical fleet charging to 02:00–06:00 window to capture off-peak grid pricing. Estimated daily saving:</div>
+        <div class="insight-value val-volt">$3,840</div>
+      </div>
+
+      <div class="insight-card fade-in" style="animation-delay:0.3s">
+        <div class="insight-header">
+          <div class="insight-icon">🔋</div>
+          <div class="insight-title">V2G Opportunity</div>
+        </div>
+        <div class="insight-body">Grid stress predicted at 17:45. Vehicle-to-grid discharge from 84 enrolled vehicles could offset peak by up to 2.4 MWh.</div>
+        <div class="insight-value val-electric">2.4 MWh</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HEATMAP -->
+<section class="heatmap-section" id="heatmap">
+  <div class="section-label">Demand Analytics</div>
+  <h2>Usage <em>Heatmap</em> — Weekly</h2>
+  <p class="section-desc">Hourly charging demand patterns across your network. Hover any cell for details.</p>
+  <div id="heatmap-container" style="overflow-x:auto; margin-bottom:80px;"></div>
+</section>
+
+<!-- CTA -->
+<div class="cta-section">
+  <h2>Ready to <em>Optimize</em><br>Your Network?</h2>
+  <p>Join 200+ operators already running smarter EV infrastructure with VoltIQ.</p>
+  <div class="cta-actions">
+    <button class="btn-primary btn-large" onclick="showToast('Starting free trial…','success')">Start Free Trial</button>
+    <button class="btn-ghost btn-large" onclick="showToast('Scheduling a demo…','info')">Talk to Sales</button>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <a href="#" class="nav-logo" style="font-size:20px; text-decoration:none; display:inline-flex">
+        <div class="bolt" style="width:24px; height:24px" aria-hidden="true"></div>
+        Volt<span>IQ</span>
+      </a>
+      <p>AI-powered EV charging demand forecasting and grid optimization platform for operators at any scale.</p>
+    </div>
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <ul>
+        <li><a href="#">Dashboard</a></li>
+        <li><a href="#">Forecasting</a></li>
+        <li><a href="#">Load Balancing</a></li>
+        <li><a href="#">Fleet Management</a></li>
+        <li><a href="#">Analytics</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4>Developers</h4>
+      <ul>
+        <li><a href="#">API Reference</a></li>
+        <li><a href="#">Webhooks</a></li>
+        <li><a href="#">SDKs</a></li>
+        <li><a href="#">Changelog</a></li>
+        <li><a href="#">Status Page</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4>Company</h4>
+      <ul>
+        <li><a href="#">About</a></li>
+        <li><a href="#">Blog</a></li>
+        <li><a href="#">Careers</a></li>
+        <li><a href="#">Press</a></li>
+        <li><a href="#">Contact</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <p>© 2026 VoltIQ Technologies. All rights reserved.</p>
+    <div class="footer-links">
+      <a href="#">Privacy Policy</a>
+      <a href="#">Terms of Service</a>
+      <a href="#">Security</a>
+    </div>
+  </div>
+</footer>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!-- JAVASCRIPT                                             -->
+<!-- ══════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+/* ── SUPABASE CLIENT ── */
+const SUPABASE_URL = 'https://rmahyplibcpvqbfxacgp.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_Rhloe6zqDhCY7dwxwsEIhA_Em30JsvE';
+const _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ── TOAST NOTIFICATIONS ── */
+let toastTimer = null;
+function showToast(msg, type = 'info') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 3500);
+}
+
+/* ── SCROLL ANIMATIONS ── */
+const scrollObserver = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.08 });
+document.querySelectorAll('.fade-in').forEach(el => scrollObserver.observe(el));
+
+/* ── CHART DEFAULTS ── */
+Chart.defaults.color = '#607d8b';
+Chart.defaults.font.family = "'Space Mono', monospace";
+Chart.defaults.font.size = 10;
+
+/* ════════════════════════════════════
+   REAL-TIME DEMAND CHART
+════════════════════════════════════ */
+let v2gOffset = 0;
+const demandCtx = document.getElementById('demandChart').getContext('2d');
+const now = new Date();
+const demandLabels = Array.from({ length: 30 }, (_, i) => {
+  const d = new Date(now - (29 - i) * 2 * 60000);
+  return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+});
+
+const demandChart = new Chart(demandCtx, {
+  type: 'line',
+  data: {
+    labels: demandLabels,
+    datasets: [{
+      label: 'Demand kW',
+      data: Array.from({ length: 30 }, () => Math.round(1200 + Math.random() * 600)),
+      borderColor: '#00e5ff',
+      backgroundColor: 'rgba(0,229,255,0.06)',
+      fill: true,
+      tension: 0.4,
+      borderWidth: 1.5,
+      pointRadius: 0,
+    }]
+  },
+  options: {
+    animation: false,
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { maxTicksLimit: 6 } },
+      y: { grid: { color: 'rgba(255,255,255,0.04)' }, min: 800, ticks: { callback: v => (v/1000).toFixed(1) + ' GW' } }
+    }
+  }
+});
+
+async function updateDemandChart() {
+  try {
+    const { data, error } = await _supabase
+      .from('demand_history')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(30);
+
+    if (error || !data || data.length === 0) return;
+
+    const sorted = data.reverse();
+    demandChart.data.labels = sorted.map(row => {
+      const d = new Date(row.created_at);
+      return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+    });
+    demandChart.data.datasets[0].data = sorted.map(row => row.kw_value * (1 - v2gOffset));
+    demandChart.update('none');
+  } catch (err) {
+    console.error('Demand chart error:', err);
+  }
+}
+
+updateDemandChart();
+
+_supabase.channel('demand-updates')
+  .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'demand_history' }, updateDemandChart)
+  .subscribe();
+
+/* ════════════════════════════════════
+   STATION LIST
+════════════════════════════════════ */
+let stationsList = [];
+let selectedStationId = null;
+
+async function loadStations() {
+  const { data: stations, error } = await _supabase.from('charging_stations').select('*');
+  if (error) { console.error('Station fetch error:', error); return; }
+
+  stationsList = stations;
+  renderStations(stations);
+}
+
+function renderStations(stations) {
+  const container = document.getElementById('stations-container');
+  const countLabel = document.getElementById('stationCountLabel');
+  const trigger    = document.getElementById('reviewsTrigger');
+
+  if (!stations || stations.length === 0) {
+    container.innerHTML = '<div class="loading-state">No stations found.</div>';
+    return;
+  }
+
+  const activeCount = stations.filter(s => s.status === 'active').length;
+  countLabel.innerHTML = `<span class="status-dot"></span>${activeCount} Active`;
+
+  container.innerHTML = stations.map(station => {
+    const statusClass = station.status === 'active' ? 'active' : (station.status === 'busy' ? 'busy' : 'offline');
+    const barColor    = station.power_load > 80 ? 'fill-red' : (station.power_load > 50 ? 'fill-amber' : 'fill-green');
+    return `
+      <div class="station-row" data-id="${station.id}" onclick="selectStation(${station.id},'${station.name.replace(/'/g,"\\'")}')">
+        <div class="station-icon ${statusClass}" aria-hidden="true">⚡</div>
+        <div class="station-info">
+          <div class="station-name">${station.name}</div>
+          <div class="station-loc">${station.status.toUpperCase()}</div>
+        </div>
+        <div class="station-bar-wrap">
+          <div class="station-bar-label"><span>Load</span><span>${station.power_load}%</span></div>
+          <div class="station-bar"><div class="station-bar-fill ${barColor}" style="width:${station.power_load}%"></div></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  trigger.style.display = 'flex';
+}
+
+function selectStation(id, name) {
+  selectedStationId = id;
+  document.querySelectorAll('.station-row').forEach(r => r.style.background = '');
+  const row = document.querySelector(`.station-row[data-id="${id}"]`);
+  if (row) row.style.background = 'rgba(0,229,255,0.06)';
+  document.getElementById('reviewsTriggerCount').textContent = 'View reviews ›';
+}
+
+loadStations();
+
+_supabase.channel('table-db-changes')
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'charging_stations' }, loadStations)
+  .subscribe();
+
+/* ════════════════════════════════════
+   REVIEWS MODAL
+════════════════════════════════════ */
+const modal         = document.getElementById('reviewsModal');
+const closeModal    = document.getElementById('closeModal');
+const reviewsList   = document.getElementById('reviewsList');
+const reviewComment = document.getElementById('reviewComment');
+const submitReview  = document.getElementById('submitReview');
+const starBtns      = document.querySelectorAll('.star-btn');
+let selectedRating  = 0;
+
+// Star selection
+starBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    selectedRating = parseInt(btn.dataset.v);
+    starBtns.forEach(b => b.classList.toggle('selected', parseInt(b.dataset.v) <= selectedRating));
+  });
+});
+
+// Open modal
+document.getElementById('reviewsTrigger').addEventListener('click', () => {
+  if (!selectedStationId && stationsList.length > 0) {
+    selectedStationId = stationsList[0].id;
+  }
+  if (!selectedStationId) { showToast('No station selected.', 'error'); return; }
+  const station = stationsList.find(s => s.id === selectedStationId);
+  document.getElementById('modalStationName').textContent = station ? station.name : `Station #${selectedStationId}`;
+  modal.classList.add('open');
+  loadReviews();
+});
+
+closeModal.addEventListener('click', () => modal.classList.remove('open'));
+modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('open'); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') modal.classList.remove('open'); });
+
+async function loadReviews() {
+  reviewsList.innerHTML = '<div class="loading-state">Loading reviews…</div>';
+  const { data, error } = await _supabase
+    .from('reviews')
+    .select('*')
+    .eq('station_id', selectedStationId)
+    .order('id', { ascending: false });
+
+  if (error) {
+    reviewsList.innerHTML = `<div class="loading-state" style="color:var(--red)">Error loading reviews.</div>`;
+    return;
+  }
+  if (!data || data.length === 0) {
+    reviewsList.innerHTML = `<div class="loading-state">No reviews yet. Be the first!</div>`;
+    return;
+  }
+
+  reviewsList.innerHTML = data.map(r => `
+    <div class="review-item">
+      <div class="review-meta">
+        <span class="review-stars">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</span>
+        <span class="review-user">User #${(r.user_id || '').toString().slice(0,8)}</span>
+      </div>
+      <p class="review-comment">${r.comment || '<em style="color:var(--muted)">No comment provided.</em>'}</p>
+    </div>
+  `).join('');
+
+  // Update count
+  document.getElementById('reviewsTriggerCount').textContent = `${data.length} review${data.length !== 1 ? 's' : ''}`;
+}
+
+submitReview.addEventListener('click', async () => {
+  const comment = reviewComment.value.trim();
+  if (!selectedRating) { showToast('Please select a star rating.', 'error'); return; }
+  if (!comment) { showToast('Please write a comment.', 'error'); return; }
+
+  submitReview.textContent = 'Submitting…';
+  submitReview.disabled = true;
+
+  const { error } = await _supabase.from('reviews').insert({
+    station_id: selectedStationId,
+    rating: selectedRating,
+    comment,
+    user_id: crypto.randomUUID()
+  });
+
+  submitReview.textContent = 'Submit Review';
+  submitReview.disabled = false;
+
+  if (error) {
+    showToast('Failed to submit review. Please try again.', 'error');
+    console.error('Review insert error:', error);
+    return;
+  }
+
+  showToast('Review submitted! Thank you.', 'success');
+  reviewComment.value = '';
+  selectedRating = 0;
+  starBtns.forEach(b => b.classList.remove('selected'));
+  loadReviews();
+});
+
+/* ════════════════════════════════════
+   ENERGY MIX CHART
+════════════════════════════════════ */
+new Chart(document.getElementById('energyMixChart').getContext('2d'), {
+  type: 'doughnut',
+  data: {
+    labels: ['Solar', 'Wind', 'Hydro', 'Natural Gas', 'Grid'],
+    datasets: [{
+      data: [34, 28, 14, 16, 8],
+      backgroundColor: ['#76ff03','#00e5ff','#00bcd4','#ffab00','#607d8b'],
+      borderColor: '#0a1929',
+      borderWidth: 3,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: '70%',
+    plugins: {
+      legend: { position: 'right', labels: { boxWidth: 8, padding: 12, font: { size: 10 } } }
+    }
+  }
+});
+
+/* ════════════════════════════════════
+   LOAD FORECAST CHART (from Supabase)
+════════════════════════════════════ */
+async function loadForecastChart() {
+  const { data, error } = await _supabase
+    .from('forecast_data')
+    .select('*')
+    .order('id', { ascending: true });
+
+  if (error || !data || data.length === 0) {
+    console.warn('Forecast data unavailable; using demo data.', error);
+    renderForecastFallback();
+    return;
+  }
+
+  const canvas = document.getElementById('loadForecastChart');
+  const existing = Chart.getChart(canvas);
+  if (existing) existing.destroy();
+
+  new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: data.map(r => r.label),
+      datasets: [
+        {
+          label: 'Actual Load',
+          data: data.map(r => r.actual),
+          borderColor: '#00e5ff',
+          backgroundColor: 'rgba(0,229,255,0.08)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 2,
+          borderWidth: 2,
+        },
+        {
+          label: 'AI Prediction',
+          data: data.map(r => r.predicted),
+          borderColor: '#76ff03',
+          borderDash: [5, 5],
+          fill: false,
+          tension: 0.4,
+          pointRadius: 2,
+          borderWidth: 1.5,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: true, labels: { color: '#e0f7fa', font: { size: 10 } } } },
+      scales: {
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#607d8b' } },
+        x: { grid: { display: false }, ticks: { color: '#607d8b', maxTicksLimit: 8 } }
+      }
+    }
+  });
+}
+
+function renderForecastFallback() {
+  const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2,'0') + ':00');
+  const actual    = hours.map((_, i) => 900 + 600 * Math.sin(((i-6)/24)*Math.PI) + Math.random()*80);
+  const predicted = actual.map(v => v * (0.97 + Math.random() * 0.06));
+  const canvas = document.getElementById('loadForecastChart');
+  const existing = Chart.getChart(canvas);
+  if (existing) existing.destroy();
+  new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: hours,
+      datasets: [
+        { label: 'Actual Load', data: actual, borderColor: '#00e5ff', backgroundColor: 'rgba(0,229,255,0.08)', fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2 },
+        { label: 'AI Prediction', data: predicted, borderColor: '#76ff03', borderDash: [5,5], fill: false, tension: 0.4, pointRadius: 0, borderWidth: 1.5 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: true, labels: { color: '#e0f7fa', font: { size: 10 } } } },
+      scales: {
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#607d8b' } },
+        x: { grid: { display: false }, ticks: { color: '#607d8b', maxTicksLimit: 8 } }
+      }
+    }
+  });
+}
+
+loadForecastChart();
+
+/* ════════════════════════════════════
+   FORECAST MAIN CHART (V2G Simulator)
+════════════════════════════════════ */
+const fmCtx = document.getElementById('forecastMain').getContext('2d');
+const fmLabels = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2,'0') + ':00');
+
+let originalForecast = fmLabels.map((_, i) =>
+  Math.max(200, 800 + 1200 * Math.sin(((i - 6) / 24) * Math.PI) + Math.random() * 100)
+);
+let currentForecastData = [...originalForecast];
+const upper = currentForecastData.map(v => v * 1.08 + 50);
+const lower = currentForecastData.map(v => v * 0.92 - 50);
+
+const forecastMainChart = new Chart(fmCtx, {
+  type: 'line',
+  data: {
+    labels: fmLabels,
+    datasets: [
+      {
+        label: 'Forecast',
+        data: currentForecastData,
+        borderColor: '#00e5ff',
+        borderWidth: 2,
+        tension: 0.4,
+        pointRadius: 0,
+        fill: false,
+      },
+      {
+        label: 'Upper Band',
+        data: upper,
+        borderColor: 'transparent',
+        backgroundColor: 'rgba(0,229,255,0.07)',
+        tension: 0.4,
+        pointRadius: 0,
+        fill: '+1',
+      },
+      {
+        label: 'Lower Band',
+        data: lower,
+        borderColor: 'transparent',
+        backgroundColor: 'rgba(0,229,255,0.07)',
+        tension: 0.4,
+        pointRadius: 0,
+        fill: false,
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { maxTicksLimit: 8 } },
+      y: {
+        grid: { color: 'rgba(255,255,255,0.04)' },
+        min: 0,
+        ticks: { callback: v => (v / 1000).toFixed(1) + ' MW' }
+      }
+    }
+  }
+});
+
+/* ── V2G TOGGLE ── */
+let isV2GActive = false;
+document.getElementById('v2g-deploy-btn').addEventListener('click', function() {
+  isV2GActive = !isV2GActive;
+
+  if (isV2GActive) {
+    this.textContent = 'V2G Active: Shaving Peak';
+    this.style.background = 'var(--volt)';
+    this.style.color = '#000';
+    this.style.boxShadow = '0 0 20px rgba(118,255,3,0.5)';
+
+    currentForecastData = currentForecastData.map(v => v > 1500 ? v * 0.70 : v);
+    forecastMainChart.data.datasets[0].data = currentForecastData;
+    forecastMainChart.data.datasets[0].borderColor = '#76ff03';
+    forecastMainChart.update();
+
+    v2gOffset = 0.30;
+    demandChart.data.datasets[0].borderColor = '#76ff03';
+    demandChart.data.datasets[0].backgroundColor = 'rgba(118,255,3,0.08)';
+    demandChart.data.datasets[0].data = demandChart.data.datasets[0].data.map(v => v * 0.70);
+    demandChart.update();
+
+    showToast('V2G fleet deployed — shaving peak demand by 30%', 'success');
+  } else {
+    this.textContent = 'Deploy V2G Fleet';
+    this.style.background = 'var(--electric)';
+    this.style.color = '#000';
+    this.style.boxShadow = 'none';
+
+    currentForecastData = [...originalForecast];
+    forecastMainChart.data.datasets[0].data = currentForecastData;
+    forecastMainChart.data.datasets[0].borderColor = '#00e5ff';
+    forecastMainChart.update();
+
+    v2gOffset = 0;
+    demandChart.data.datasets[0].borderColor = '#00e5ff';
+    demandChart.data.datasets[0].backgroundColor = 'rgba(0,229,255,0.06)';
+    updateDemandChart();
+
+    showToast('V2G deactivated. Normal grid mode restored.', 'info');
+  }
+});
+
+/* ── TIME BUTTONS ── */
+document.querySelectorAll('.time-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    // regenerate forecast data for new window (demo)
+    const multiplier = { '24H':1, '48H':2, '72H':3, '7D':7, '30D':30 }[btn.textContent] || 1;
+    const pts = Math.min(24 * multiplier, 120);
+    const newLabels = Array.from({ length: pts }, (_, i) => {
+      const h = i % 24;
+      const day = Math.floor(i / 24) + 1;
+      return (h === 0 && day > 1 ? `D${day} ` : '') + h.toString().padStart(2,'0') + ':00';
+    });
+    originalForecast = newLabels.map((_, i) =>
+      Math.max(200, 800 + 1200 * Math.sin(((i % 24 - 6) / 24) * Math.PI) + Math.random() * 100)
+    );
+    currentForecastData = [...originalForecast];
+    forecastMainChart.data.labels = newLabels;
+    forecastMainChart.data.datasets[0].data = currentForecastData;
+    forecastMainChart.data.datasets[1].data = currentForecastData.map(v => v * 1.08 + 50);
+    forecastMainChart.data.datasets[2].data = currentForecastData.map(v => v * 0.92 - 50);
+    forecastMainChart.update();
+  });
+});
+
+/* ════════════════════════════════════
+   LEAFLET MAP
+════════════════════════════════════ */
+async function initMap() {
+  const map = L.map('map');
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors'
+  }).addTo(map);
+
+  const { data: stations, error } = await _supabase.from('charging_stations').select('*');
+  if (error) { console.error('Map fetch error:', error); map.setView([20, 0], 2); return; }
+
+  const markerGroup = L.featureGroup().addTo(map);
+
+  if (stations && stations.length > 0) {
+    stations.forEach(station => {
+      if (station.lat == null || station.lng == null) return;
+      let color = '#76ff03';
+      if (station.status === 'busy')    color = '#ffab00';
+      if (station.status === 'offline') color = '#ff1744';
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="
+          width:14px; height:14px; border-radius:50%;
+          background:${color};
+          box-shadow:0 0 10px ${color}, 0 0 20px ${color}40;
+          border:2px solid rgba(255,255,255,0.7);
+        "></div>`,
+        iconSize: [14,14],
+        iconAnchor: [7,7]
+      });
+
+      L.marker([station.lat, station.lng], { icon })
+        .bindPopup(`
+          <div style="font-family:'Inter',sans-serif;color:#040b14;min-width:150px;padding:4px 0">
+            <strong style="font-family:'Rajdhani',sans-serif;font-size:16px;text-transform:uppercase;display:block;margin-bottom:4px">${station.name}</strong>
+            <div style="font-family:'Space Mono',monospace;font-size:11px;color:#607d8b">
+              STATUS: <span style="color:${color};font-weight:bold">${station.status.toUpperCase()}</span><br>
+              LOAD: <span style="color:#040b14">${station.power_load}%</span>
+            </div>
+          </div>
+        `)
+        .addTo(markerGroup);
+    });
+
+    map.fitBounds(markerGroup.getBounds(), { padding: [50, 50] });
+  } else {
+    map.setView([20, 0], 2);
+  }
+
+  // User geolocation
+  if ('geolocation' in navigator) {
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        map.flyTo([pos.coords.latitude, pos.coords.longitude], 12, { duration: 2 });
+        const userIcon = L.divIcon({
+          className: '',
+          html: `<div style="background:#00e5ff;width:14px;height:14px;border-radius:50%;box-shadow:0 0 15px #00e5ff,0 0 30px #00e5ff;border:2px solid #fff;"></div>`,
+          iconSize: [14,14], iconAnchor: [7,7]
+        });
+        L.marker([pos.coords.latitude, pos.coords.longitude], { icon: userIcon })
+          .addTo(map)
+          .bindPopup('<b style="font-family:\'Rajdhani\',sans-serif;text-transform:uppercase">Command Center</b><br>Your Location');
+      },
+      () => console.log('Geolocation denied.')
+    );
+  }
+}
+
+initMap();
+
+/* ════════════════════════════════════
+   HEATMAP
+════════════════════════════════════ */
+(function buildHeatmap() {
+  const days = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
+  const palette = [
+    [10, 30, 60, 0.2],
+    [0, 100, 180, 0.4],
+    [0, 180, 230, 0.5],
+    [118, 255, 3, 0.5],
+    [255, 171, 0, 0.6],
+    [255, 87, 34, 0.7],
+    [255, 23, 68, 0.85],
+  ];
+
+  const container = document.getElementById('heatmap-container');
+  const grid = document.createElement('div');
+  grid.className = 'heatmap-grid';
+
+  // Header
+  grid.appendChild(document.createElement('div')); // empty corner
+  for (let h = 0; h < 24; h++) {
+    const lbl = document.createElement('div');
+    lbl.className = 'heat-col-label';
+    lbl.textContent = h.toString().padStart(2,'0');
+    grid.appendChild(lbl);
+  }
+
+  // Rows
+  days.forEach(day => {
+    const lbl = document.createElement('div');
+    lbl.className = 'heat-label';
+    lbl.textContent = day;
+    grid.appendChild(lbl);
+
+    for (let h = 0; h < 24; h++) {
+      let intensity;
+      if (day === 'SAT' || day === 'SUN') {
+        intensity = (h >= 10 && h <= 18) ? 0.6 + Math.random()*0.4 : 0.1 + Math.random()*0.3;
+      } else {
+        intensity = ((h >= 7 && h <= 9) || (h >= 17 && h <= 20))
+          ? 0.7 + Math.random()*0.3
+          : (h >= 11 && h <= 14)
+          ? 0.4 + Math.random()*0.3
+          : 0.05 + Math.random()*0.2;
+      }
+      const idx = Math.min(palette.length - 1, Math.floor(intensity * palette.length));
+      const [r, g, b, a] = palette[idx];
+
+      const cell = document.createElement('div');
+      cell.className = 'heat-cell';
+      cell.style.background = `rgba(${r},${g},${b},${a})`;
+      cell.title = `${day} ${h.toString().padStart(2,'0')}:00 — Load: ${Math.round(intensity*100)}%`;
+      grid.appendChild(cell);
+    }
+  });
+
+  container.appendChild(grid);
+})();
+
+/* ════════════════════════════════════
+   LIVE COUNTER UPDATES
+════════════════════════════════════ */
+function animateCounter(el, target, decimals = 0) {
+  if (!el) return;
+  const start = parseFloat(el.textContent.replace(/,/g,''));
+  const duration = 1000;
+  const startTime = performance.now();
+  const fn = (now) => {
+    const t = Math.min((now - startTime) / duration, 1);
+    const val = start + (target - start) * t;
+    el.textContent = decimals > 0 ? val.toFixed(decimals) : Math.round(val).toLocaleString();
+    if (t < 1) requestAnimationFrame(fn);
+  };
+  requestAnimationFrame(fn);
+}
+
+setInterval(() => {
+  animateCounter(document.getElementById('sessions'), 2800 + Math.floor(Math.random()*200));
+  animateCounter(document.getElementById('energy'),   140  + Math.floor(Math.random()*20));
+  animateCounter(document.getElementById('accuracy'), 97.8 + Math.random()*0.6, 1);
+}, 5000);
+
+// Station bar micro-updates
+setInterval(() => {
+  document.querySelectorAll('.station-bar-fill').forEach(bar => {
+    const current = parseInt(bar.style.width) || 0;
+    const next = Math.max(0, Math.min(100, current + (Math.random() - 0.5) * 8));
+    bar.style.width = next + '%';
+    // Update color class
+    bar.className = 'station-bar-fill ' + (next > 80 ? 'fill-red' : next > 50 ? 'fill-amber' : 'fill-green');
+  });
+}, 3000);
+
+</script>
+</body>
+</html>
