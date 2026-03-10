@@ -2365,16 +2365,7 @@ setInterval(() => {
   animateCounter(document.getElementById('accuracy'), 97.8 + Math.random()*0.6, 1);
 }, 5000);
 
-// Station bar micro-updates
-setInterval(() => {
-  document.querySelectorAll('.station-bar-fill').forEach(bar => {
-    const current = parseInt(bar.style.width) || 0;
-    const next = Math.max(0, Math.min(100, current + (Math.random() - 0.5) * 8));
-    bar.style.width = next + '%';
-    // Update color class
-    bar.className = 'station-bar-fill ' + (next > 80 ? 'fill-red' : next > 50 ? 'fill-amber' : 'fill-green');
-  });
-}, 3000);
+
 /* ════════════════════════════════════
    NOTIFICATION CENTER
 ════════════════════════════════════ */

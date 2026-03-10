@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoltIQ — Login</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #040b14;
+  --bg2:      #071220;
+  --bg3:      #0a1929;
+  --electric: #00e5ff;
+  --volt:     #76ff03;
+  --amber:    #ffab00;
+  --red:      #ff1744;
+  --purple:   #b388ff;
+  --surface:  rgba(0,229,255,0.04);
+  --border:   rgba(0,229,255,0.12);
+  --text:     #e0f7fa;
+  --muted:    #607d8b;
+  --radius:   4px;
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Inter',sans-serif;
+  font-weight:300;
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  position:relative;
+}
+body::before{
+  content:'';
+  position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events:none;z-index:1000;opacity:0.35;
+}
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:var(--electric);border-radius:2px;}
+
+@keyframes pulse-bolt{0%,100%{filter:drop-shadow(0 0 8px var(--electric));}50%{filter:drop-shadow(0 0 20px var(--electric)) drop-shadow(0 0 36px var(--electric));}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(24px);}to{opacity:1;transform:translateY(0);}}
+@keyframes grid-shift{0%{transform:translateY(0);}100%{transform:translateY(60px);}}
+@keyframes scanline{0%{top:-10%;}100%{top:110%;}}
+@keyframes float{0%,100%{transform:translateY(0);}50%{transform:translateY(-12px);}}
+@keyframes shimmer{0%{transform:translateX(-100%);}100%{transform:translateX(100%);}}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0.2;}}
+
+/* BG GRID */
+.bg-grid{
+  position:fixed;inset:0;
+  background-image:
+    linear-gradient(rgba(0,229,255,0.04) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,229,255,0.04) 1px,transparent 1px);
+  background-size:60px 60px;
+  animation:grid-shift 20s linear infinite;
+  pointer-events:none;z-index:0;
+}
+.glow-1{position:fixed;width:600px;height:600px;background:radial-gradient(circle,rgba(0,229,255,0.07) 0%,transparent 70%);top:-150px;right:-150px;pointer-events:none;z-index:0;}
+.glow-2{position:fixed;width:400px;height:400px;background:radial-gradient(circle,rgba(118,255,3,0.05) 0%,transparent 70%);bottom:-100px;left:-100px;pointer-events:none;z-index:0;}
+
+/* SCANLINE */
+.scanline{position:fixed;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,rgba(0,229,255,0.15),transparent);animation:scanline 6s linear infinite;pointer-events:none;z-index:999;}
+
+/* MAIN CARD */
+.login-wrap{
+  position:relative;z-index:10;
+  width:100%;max-width:480px;
+  padding:20px;
+  animation:fadeUp 0.6s ease forwards;
+}
+
+.login-card{
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:8px;
+  overflow:hidden;
+  box-shadow:0 40px 80px rgba(0,0,0,0.6),0 0 60px rgba(0,229,255,0.06);
+  position:relative;
+}
+.login-card::before{
+  content:'';
+  position:absolute;top:0;left:-100%;
+  width:60%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(0,229,255,0.03),transparent);
+  animation:shimmer 5s infinite;
+}
+
+/* CARD HEADER */
+.card-header{
+  padding:32px 36px 24px;
+  border-bottom:1px solid var(--border);
+  text-align:center;
+  position:relative;
+}
+.logo-link{
+  display:inline-flex;align-items:center;gap:10px;
+  font-family:'Rajdhani',sans-serif;font-size:26px;font-weight:700;
+  color:#fff;text-decoration:none;letter-spacing:0.02em;
+  margin-bottom:20px;
+}
+.bolt{
+  width:28px;height:28px;
+  background:var(--electric);
+  clip-path:polygon(60% 0%,40% 45%,70% 45%,30% 100%,55% 55%,25% 55%);
+  filter:drop-shadow(0 0 8px var(--electric));
+  animation:pulse-bolt 2s ease-in-out infinite;
+}
+.logo-link span{color:var(--electric);}
+
+/* ROLE SELECTOR */
+.role-selector{
+  display:grid;grid-template-columns:repeat(3,1fr);
+  gap:8px;margin-top:4px;
+}
+.role-btn{
+  padding:10px 6px;
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  cursor:pointer;
+  transition:all 0.2s;
+  text-align:center;
+}
+.role-btn:hover{border-color:rgba(0,229,255,0.3);background:rgba(0,229,255,0.05);}
+.role-btn.active{border-color:var(--electric);background:rgba(0,229,255,0.08);box-shadow:0 0 16px rgba(0,229,255,0.12);}
+.role-icon{font-size:18px;margin-bottom:4px;display:block;}
+.role-label{font-size:10px;font-family:'Space Mono',monospace;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase;display:block;}
+.role-btn.active .role-label{color:var(--electric);}
+
+/* CARD BODY */
+.card-body{padding:28px 36px 32px;}
+
+.auth-tabs{
+  display:flex;gap:0;
+  margin-bottom:24px;
+  border-bottom:1px solid var(--border);
+}
+.auth-tab{
+  flex:1;text-align:center;
+  padding:10px;
+  font-size:11px;font-weight:600;
+  letter-spacing:0.1em;text-transform:uppercase;
+  color:var(--muted);cursor:pointer;
+  border-bottom:2px solid transparent;
+  transition:all 0.2s;
+  margin-bottom:-1px;
+  font-family:'Rajdhani',sans-serif;
+}
+.auth-tab.active{color:var(--electric);border-bottom-color:var(--electric);}
+
+/* FORMS */
+.auth-form{display:flex;flex-direction:column;gap:14px;}
+.form-group{display:flex;flex-direction:column;gap:5px;}
+.form-group label{
+  font-size:10px;font-weight:500;
+  letter-spacing:0.1em;text-transform:uppercase;
+  color:var(--muted);font-family:'Space Mono',monospace;
+}
+.form-group input{
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:11px 14px;
+  color:var(--text);
+  font-size:13px;font-family:'Inter',sans-serif;
+  outline:none;transition:border-color 0.2s,box-shadow 0.2s;
+  width:100%;
+}
+.form-group input::placeholder{color:var(--muted);opacity:0.5;}
+.form-group input:focus{border-color:var(--electric);box-shadow:0 0 0 3px rgba(0,229,255,0.08);}
+
+/* ADMIN KEY FIELD */
+.admin-key-group{
+  background:rgba(255,171,0,0.05);
+  border:1px solid rgba(255,171,0,0.2);
+  border-radius:var(--radius);
+  padding:12px 14px;
+  display:none;
+}
+.admin-key-group.show{display:flex;flex-direction:column;gap:5px;}
+.admin-key-group label{color:var(--amber)!important;}
+.admin-key-group input{background:rgba(255,171,0,0.05);border-color:rgba(255,171,0,0.2);}
+.admin-key-group input:focus{border-color:var(--amber);box-shadow:0 0 0 3px rgba(255,171,0,0.08);}
+.admin-warning{
+  font-size:10px;font-family:'Space Mono',monospace;
+  color:var(--amber);opacity:0.7;margin-top:4px;
+  display:flex;align-items:center;gap:6px;
+}
+
+/* SUBMIT */
+.form-submit{
+  width:100%;padding:13px;
+  background:var(--electric);border:none;
+  color:#000;font-size:13px;font-weight:700;
+  font-family:'Rajdhani',sans-serif;
+  letter-spacing:0.12em;text-transform:uppercase;
+  border-radius:var(--radius);cursor:pointer;
+  transition:all 0.2s;margin-top:4px;
+  position:relative;overflow:hidden;
+}
+.form-submit::after{content:'';position:absolute;inset:0;background:#fff;opacity:0;transition:opacity 0.2s;}
+.form-submit:hover::after{opacity:0.12;}
+.form-submit:hover{box-shadow:0 0 28px rgba(0,229,255,0.45);}
+.form-submit:active{transform:scale(0.98);}
+.form-submit:disabled{opacity:0.5;cursor:not-allowed;}
+
+/* role-specific submit colors */
+.role-station .form-submit{background:var(--volt);color:#000;}
+.role-station .form-submit:hover{box-shadow:0 0 28px rgba(118,255,3,0.45);}
+.role-admin .form-submit{background:var(--amber);color:#000;}
+.role-admin .form-submit:hover{box-shadow:0 0 28px rgba(255,171,0,0.45);}
+
+/* MSG */
+.form-msg{
+  font-size:11px;font-family:'Space Mono',monospace;
+  padding:10px 13px;border-radius:var(--radius);
+  display:none;line-height:1.5;
+}
+.form-msg.success{background:rgba(118,255,3,0.08);border:1px solid rgba(118,255,3,0.2);color:var(--volt);display:block;}
+.form-msg.error{background:rgba(255,23,68,0.08);border:1px solid rgba(255,23,68,0.2);color:var(--red);display:block;}
+
+/* FOOTER */
+.auth-footer{margin-top:16px;text-align:center;font-size:12px;color:var(--muted);}
+.auth-footer a{color:var(--electric);text-decoration:none;cursor:pointer;}
+.auth-footer a:hover{text-decoration:underline;}
+
+/* DIVIDER */
+.divider{display:flex;align-items:center;gap:12px;margin:4px 0;}
+.divider span{font-size:10px;font-family:'Space Mono',monospace;color:var(--muted);letter-spacing:0.1em;white-space:nowrap;}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* ROLE STATUS BAR */
+.role-status{
+  padding:10px 36px;
+  background:rgba(0,229,255,0.03);
+  border-top:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;
+  font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);
+  letter-spacing:0.08em;
+}
+.role-dot{width:6px;height:6px;border-radius:50%;background:var(--electric);box-shadow:0 0 6px var(--electric);animation:blink 2s ease infinite;}
+.role-dot.green{background:var(--volt);box-shadow:0 0 6px var(--volt);}
+.role-dot.amber{background:var(--amber);box-shadow:0 0 6px var(--amber);}
+
+/* TOAST */
+.toast{
+  position:fixed;bottom:28px;right:28px;z-index:9999;
+  background:var(--bg3);border:1px solid var(--border);
+  border-radius:var(--radius);padding:12px 18px;
+  font-family:'Space Mono',monospace;font-size:11px;color:var(--text);
+  box-shadow:0 8px 32px rgba(0,0,0,0.4);
+  opacity:0;transform:translateY(10px);
+  transition:all 0.3s;pointer-events:none;max-width:300px;
+}
+.toast.show{opacity:1;transform:translateY(0);}
+.toast.success{border-color:rgba(118,255,3,0.3);color:var(--volt);}
+.toast.error{border-color:rgba(255,23,68,0.3);color:var(--red);}
+</style>
+</head>
+<body>
+
+<div class="bg-grid"></div>
+<div class="glow-1"></div>
+<div class="glow-2"></div>
+<div class="scanline"></div>
+<div class="toast" id="toast"></div>
+
+<div class="login-wrap">
+  <div class="login-card" id="loginCard">
+
+    <!-- HEADER -->
+    <div class="card-header">
+      <a href="dashboard.html" class="logo-link">
+        <div class="bolt"></div>
+        Volt<span>IQ</span>
+      </a>
+
+      <!-- Role Selector -->
+      <div class="role-selector">
+        <div class="role-btn active" id="roleUser" onclick="setRole('user')">
+          <span class="role-icon">👤</span>
+          <span class="role-label">User</span>
+        </div>
+        <div class="role-btn" id="roleOwner" onclick="setRole('station_owner')">
+          <span class="role-icon">⚡</span>
+          <span class="role-label">Station Owner</span>
+        </div>
+        <div class="role-btn" id="roleAdmin" onclick="setRole('admin')">
+          <span class="role-icon">🛡️</span>
+          <span class="role-label">Admin</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- BODY -->
+    <div class="card-body">
+
+      <!-- Tabs -->
+      <div class="auth-tabs">
+        <div class="auth-tab active" id="tabSignup" onclick="switchTab('signup')">Sign Up</div>
+        <div class="auth-tab" id="tabLogin" onclick="switchTab('login')">Log In</div>
+      </div>
+
+      <!-- SIGNUP FORM -->
+      <div id="signupForm" class="auth-form">
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" id="signupName" placeholder="e.g. Arjun Sharma" />
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="signupEmail" placeholder="you@example.com" />
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="signupPassword" placeholder="Min. 8 characters" />
+        </div>
+
+        <!-- Station Owner extra field -->
+        <div class="form-group" id="stationNameGroup" style="display:none">
+          <label>Station Name</label>
+          <input type="text" id="signupStationName" placeholder="e.g. VoltIQ Hub — Pune" />
+        </div>
+
+        <!-- Admin secret key -->
+        <div class="admin-key-group" id="adminKeyGroupSignup">
+          <label>Admin Secret Key</label>
+          <input type="password" id="signupAdminKey" placeholder="Enter secret key" />
+          <span class="admin-warning">⚠ Only authorized personnel</span>
+        </div>
+
+        <div class="form-msg" id="signupMsg"></div>
+        <button class="form-submit" id="signupSubmit" onclick="handleSignup()">Create Account</button>
+      </div>
+
+      <!-- LOGIN FORM -->
+      <div id="loginForm" class="auth-form" style="display:none">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="loginEmail" placeholder="you@example.com" />
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="loginPassword" placeholder="Your password" />
+        </div>
+
+        <!-- Admin secret key login -->
+        <div class="admin-key-group" id="adminKeyGroupLogin">
+          <label>Admin Secret Key</label>
+          <input type="password" id="loginAdminKey" placeholder="Enter secret key" />
+          <span class="admin-warning">⚠ Only authorized personnel</span>
+        </div>
+
+        <div class="form-msg" id="loginMsg"></div>
+        <button class="form-submit" id="loginSubmit" onclick="handleLogin()">Log In</button>
+      </div>
+
+      <div class="auth-footer">
+        <span id="authFooterText">Already have an account? </span>
+        <a id="authFooterLink" onclick="switchTab('login')">Log in</a>
+      </div>
+    </div>
+
+    <!-- ROLE STATUS BAR -->
+    <div class="role-status">
+      <div class="role-dot" id="roleDot"></div>
+      <span id="roleStatusText">SIGNING IN AS USER</span>
+    </div>
+
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
+
+/* ── FIREBASE CONFIG ── */
+const firebaseConfig = {
+  apiKey: "AIzaSyDhC7n1OHawDfcOC0HvA5C80vmjJIYN90g",
+  authDomain: "voltiq-93b13.firebaseapp.com",
+  projectId: "voltiq-93b13",
+  storageBucket: "voltiq-93b13.firebasestorage.app",
+  messagingSenderId: "457577167750",
+  appId: "1:457577167750:web:29a9024e7d8bd6f96fca07",
+  measurementId: "G-Y1R8VX82E3"
+};
+
+const app  = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db   = getFirestore(app);
+
+/* ── ADMIN SECRET KEY (change this to your own secret!) ── */
+const ADMIN_SECRET = "VOLTIQ_ADMIN_2025";
+
+/* ── STATE ── */
+let currentRole = 'user';
+let currentTab  = 'signup';
+
+/* ── TOAST ── */
+function showToast(msg, type='info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  setTimeout(() => t.className = 'toast', 3500);
+}
+
+/* ── ROLE SWITCHER ── */
+window.setRole = function(role) {
+  currentRole = role;
+  ['user','station_owner','admin'].forEach(r => {
+    const el = document.getElementById('role' + r.split('_').map(w=>w[0].toUpperCase()+w.slice(1)).join(''));
+    if(el) el.classList.remove('active');
+  });
+  document.getElementById('roleUser').classList.remove('active');
+  document.getElementById('roleOwner').classList.remove('active');
+  document.getElementById('roleAdmin').classList.remove('active');
+
+  if(role==='user')          document.getElementById('roleUser').classList.add('active');
+  else if(role==='station_owner') document.getElementById('roleOwner').classList.add('active');
+  else if(role==='admin')    document.getElementById('roleAdmin').classList.add('active');
+
+  // Show/hide extra fields
+  document.getElementById('stationNameGroup').style.display  = role==='station_owner' ? 'flex' : 'none';
+  document.getElementById('adminKeyGroupSignup').classList.toggle('show', role==='admin');
+  document.getElementById('adminKeyGroupLogin').classList.toggle('show',  role==='admin');
+
+  // Card color class
+  const card = document.getElementById('loginCard');
+  card.className = 'login-card';
+  if(role==='station_owner') card.classList.add('role-station');
+  if(role==='admin')         card.classList.add('role-admin');
+
+  // Status bar
+  const dot  = document.getElementById('roleDot');
+  const text = document.getElementById('roleStatusText');
+  if(role==='user')          { dot.className='role-dot'; text.textContent='SIGNING IN AS USER'; }
+  else if(role==='station_owner'){ dot.className='role-dot green'; text.textContent='SIGNING IN AS STATION OWNER'; }
+  else                       { dot.className='role-dot amber'; text.textContent='ADMIN ACCESS — RESTRICTED'; }
+};
+
+/* ── TAB SWITCHER ── */
+window.switchTab = function(tab) {
+  currentTab = tab;
+  const isSignup = tab==='signup';
+  document.getElementById('signupForm').style.display = isSignup ? 'flex' : 'none';
+  document.getElementById('loginForm').style.display  = isSignup ? 'none' : 'flex';
+  document.getElementById('tabSignup').classList.toggle('active', isSignup);
+  document.getElementById('tabLogin').classList.toggle('active', !isSignup);
+  document.getElementById('authFooterText').textContent = isSignup ? 'Already have an account? ' : "Don't have an account? ";
+  document.getElementById('authFooterLink').textContent = isSignup ? 'Log in' : 'Sign up';
+  document.getElementById('authFooterLink').onclick = () => window.switchTab(isSignup?'login':'signup');
+  // clear msgs
+  ['signupMsg','loginMsg'].forEach(id => {
+    const el = document.getElementById(id);
+    el.className = 'form-msg'; el.textContent = '';
+  });
+};
+
+/* ── REDIRECT BY ROLE ── */
+function redirectByRole(role) {
+  if(role==='admin')         window.location.href = 'admin.html';
+  else if(role==='station_owner') window.location.href = 'station-owner.html';
+  else                       window.location.href = 'dashboard.html';
+}
+
+/* ── SIGN UP ── */
+window.handleSignup = async function() {
+  const name     = document.getElementById('signupName').value.trim();
+  const email    = document.getElementById('signupEmail').value.trim();
+  const password = document.getElementById('signupPassword').value;
+  const msgEl    = document.getElementById('signupMsg');
+  const btn      = document.getElementById('signupSubmit');
+
+  msgEl.className = 'form-msg';
+
+  if(!name||!email||!password){ msgEl.className='form-msg error'; msgEl.textContent='All fields are required.'; return; }
+  if(password.length<8){ msgEl.className='form-msg error'; msgEl.textContent='Password must be at least 8 characters.'; return; }
+
+  if(currentRole==='station_owner'){
+    const sName = document.getElementById('signupStationName').value.trim();
+    if(!sName){ msgEl.className='form-msg error'; msgEl.textContent='Please enter your station name.'; return; }
+  }
+
+  if(currentRole==='admin'){
+    const key = document.getElementById('signupAdminKey').value;
+    if(key!==ADMIN_SECRET){ msgEl.className='form-msg error'; msgEl.textContent='Invalid admin secret key.'; return; }
+  }
+
+  btn.disabled=true; btn.textContent='Creating Account...';
+
+  try {
+    const { user } = await createUserWithEmailAndPassword(auth, email, password);
+
+    // Build user doc
+    const userData = {
+      uid:   user.uid,
+      name,
+      email,
+      role:  currentRole,
+      plan:  'free',
+      createdAt: new Date().toISOString(),
+      status: currentRole==='station_owner' ? 'pending' : 'active'
+    };
+
+    if(currentRole==='station_owner'){
+      userData.stationName = document.getElementById('signupStationName').value.trim();
+      userData.stationId   = null; // assigned after approval
+    }
+
+    await setDoc(doc(db,'users',user.uid), userData);
+
+    // If station owner, create a pending station doc
+    if(currentRole==='station_owner'){
+      const stationRef = doc(db,'stations',user.uid+'_station');
+      await setDoc(stationRef,{
+        ownerId:   user.uid,
+        ownerName: name,
+        ownerEmail:email,
+        name: userData.stationName,
+        status: 'pending_approval',
+        approved: false,
+        lat: null, lng: null,
+        address:'', city:'', state:'',
+        powerLoad: 0,
+        pricingKwh: 0,
+        connectors: [],
+        chargerCount: 0,
+        operatingHours: '',
+        contactPhone: '',
+        contactEmail: email,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    msgEl.className='form-msg success';
+    msgEl.textContent = currentRole==='station_owner'
+      ? 'Account created! Awaiting admin approval before your station goes live.'
+      : 'Account created successfully! Redirecting...';
+
+    setTimeout(() => redirectByRole(currentRole), 1800);
+
+  } catch(err){
+    msgEl.className='form-msg error';
+    msgEl.textContent = err.code==='auth/email-already-in-use'
+      ? 'Email already registered. Please log in.'
+      : err.message;
+    btn.disabled=false; btn.textContent='Create Account';
+  }
+};
+
+/* ── LOGIN ── */
+window.handleLogin = async function() {
+  const email    = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const msgEl    = document.getElementById('loginMsg');
+  const btn      = document.getElementById('loginSubmit');
+
+  msgEl.className = 'form-msg';
+
+  if(!email||!password){ msgEl.className='form-msg error'; msgEl.textContent='Please fill in all fields.'; return; }
+
+  if(currentRole==='admin'){
+    const key = document.getElementById('loginAdminKey').value;
+    if(key!==ADMIN_SECRET){ msgEl.className='form-msg error'; msgEl.textContent='Invalid admin secret key.'; return; }
+  }
+
+  btn.disabled=true; btn.textContent='Logging in...';
+
+  try {
+    const { user } = await signInWithEmailAndPassword(auth, email, password);
+
+    // Verify role matches
+    const snap = await getDoc(doc(db,'users',user.uid));
+    if(!snap.exists()){ throw new Error('User profile not found.'); }
+
+    const data = snap.data();
+    if(data.role !== currentRole){
+      msgEl.className='form-msg error';
+      msgEl.textContent=`This account is registered as "${data.role.replace('_',' ')}". Please select the correct role.`;
+      btn.disabled=false; btn.textContent='Log In';
+      return;
+    }
+
+    if(data.status==='pending'){
+      msgEl.className='form-msg error';
+      msgEl.textContent='Your station owner account is pending admin approval.';
+      btn.disabled=false; btn.textContent='Log In';
+      return;
+    }
+
+    // Store session info
+    sessionStorage.setItem('voltiq_user', JSON.stringify({ uid:user.uid, role:data.role, name:data.name, email:data.email, plan:data.plan }));
+
+    showToast('Welcome back, '+data.name+'!', 'success');
+    setTimeout(() => redirectByRole(data.role), 800);
+
+  } catch(err){
+    msgEl.className='form-msg error';
+    msgEl.textContent = err.code==='auth/invalid-credential'
+      ? 'Incorrect email or password.'
+      : err.message;
+    btn.disabled=false; btn.textContent='Log In';
+  }
+};
+
+/* ── AUTO SESSION CHECK ── */
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js";
+onAuthStateChanged(auth, async (user) => {
+  if(user){
+    const snap = await getDoc(doc(db,'users',user.uid));
+    if(snap.exists()){
+      const data = snap.data();
+      sessionStorage.setItem('voltiq_user', JSON.stringify({ uid:user.uid, role:data.role, name:data.name, email:data.email, plan:data.plan }));
+      redirectByRole(data.role);
+    }
+  }
+});
+</script>
+</body>
+</html>
